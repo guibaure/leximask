@@ -15,7 +15,8 @@ class WorkflowIntegrationTests(unittest.TestCase):
             root = Path(temporary_directory) / "repo"
             root.mkdir()
             (root / "src").mkdir()
-            (root / "src" / "alpha.py").write_text(
+            (root / "src" / "alpha").mkdir()
+            (root / "src" / "alpha" / "alpha.py").write_text(
                 "print('Alpha token')\n",
                 encoding="utf-8",
             )
@@ -26,25 +27,28 @@ class WorkflowIntegrationTests(unittest.TestCase):
             self._run_cli("plan", "--input", str(root), "--mapping", str(mapping_path))
             plan_data = json.loads((root / ".leximask" / "plan.json").read_text(encoding="utf-8"))
             self.assertEqual(plan_data["format"], "leximask/plan/v1")
+            self.assertTrue(plan_data["files"][0]["transformed_text"])
+            self.assertTrue(plan_data["files"][0]["source_digest"])
 
             self._run_cli("apply", "--input", str(root))
-            self.assertTrue((root / "src" / "omega.py").is_file())
+            self.assertTrue((root / "src" / "omega" / "omega.py").is_file())
             self.assertEqual(
-                (root / "src" / "omega.py").read_text(encoding="utf-8"),
+                (root / "src" / "omega" / "omega.py").read_text(encoding="utf-8"),
                 "print('Omega mask')\n",
             )
             self.assertTrue((root / ".leximask" / "state.json").is_file())
             self.assertTrue(
-                (root / ".leximask" / "sidecars" / "src" / "omega.py.leximask.json").is_file()
+                (root / ".leximask" / "sidecars" / "src" / "omega" / "omega.py.leximask.json").is_file()
             )
 
             self._run_cli("reverse", "--input", str(root))
-            self.assertTrue((root / "src" / "alpha.py").is_file())
+            self.assertTrue((root / "src" / "alpha" / "alpha.py").is_file())
             self.assertEqual(
-                (root / "src" / "alpha.py").read_text(encoding="utf-8"),
+                (root / "src" / "alpha" / "alpha.py").read_text(encoding="utf-8"),
                 "print('Alpha token')\n",
             )
             self.assertEqual((root / "README.md").read_text(encoding="utf-8"), "Alpha token\n")
+            self.assertFalse((root / ".leximask").exists())
 
     def test_fails_on_unsupported_files(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -64,6 +68,99 @@ class WorkflowIntegrationTests(unittest.TestCase):
             )
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("Unsupported files", result.stderr)
+
+    def test_apply_fails_when_source_changes_after_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "repo"
+            root.mkdir()
+            (root / "alpha.txt").write_text("alpha\n", encoding="utf-8")
+            mapping_path = Path(temporary_directory) / "mapping.csv"
+            mapping_path.write_text("source,replacement\nalpha,omega\n", encoding="utf-8")
+
+            self._run_cli("plan", "--input", str(root), "--mapping", str(mapping_path))
+            (root / "alpha.txt").write_text("alpha changed\n", encoding="utf-8")
+
+            result = self._run_cli("apply", "--input", str(root), check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Source file changed after planning", result.stderr)
+
+    def test_reverse_fails_when_transformed_file_drifts(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "repo"
+            root.mkdir()
+            (root / "alpha.txt").write_text("alpha token\n", encoding="utf-8")
+            mapping_path = Path(temporary_directory) / "mapping.csv"
+            mapping_path.write_text("source,replacement\nalpha,omega\ntoken,mask\n", encoding="utf-8")
+
+            self._run_cli("plan", "--input", str(root), "--mapping", str(mapping_path))
+            self._run_cli("apply", "--input", str(root))
+            (root / "omega.txt").write_text("omega drift\n", encoding="utf-8")
+
+            result = self._run_cli("reverse", "--input", str(root), check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Transformed file content drift detected", result.stderr)
+
+    def test_apply_uses_saved_plan_even_if_mapping_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "repo"
+            root.mkdir()
+            (root / "alpha.txt").write_text("alpha\n", encoding="utf-8")
+            mapping_path = Path(temporary_directory) / "mapping.csv"
+            mapping_path.write_text("source,replacement\nalpha,omega\n", encoding="utf-8")
+
+            self._run_cli("plan", "--input", str(root), "--mapping", str(mapping_path))
+            mapping_path.write_text("source,replacement\nalpha,sigma\n", encoding="utf-8")
+
+            self._run_cli("apply", "--input", str(root))
+            self.assertTrue((root / "omega.txt").is_file())
+            self.assertFalse((root / "sigma.txt").exists())
+
+    def test_plan_fails_on_file_target_collision(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "repo"
+            root.mkdir()
+            (root / "alpha.txt").write_text("alpha\n", encoding="utf-8")
+            (root / "omega.txt").write_text("omega\n", encoding="utf-8")
+            mapping_path = Path(temporary_directory) / "mapping.csv"
+            mapping_path.write_text(
+                "source,replacement\nalpha,omega\n",
+                encoding="utf-8",
+            )
+
+            result = self._run_cli(
+                "plan",
+                "--input",
+                str(root),
+                "--mapping",
+                str(mapping_path),
+                check=False,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("File path collision detected", result.stderr)
+
+    def test_plan_fails_on_file_directory_target_collision(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "repo"
+            root.mkdir()
+            (root / "alpha.txt").mkdir()
+            (root / "alpha.txt" / "note.md").write_text("alpha\n", encoding="utf-8")
+            (root / "omega.txt").write_text("omega\n", encoding="utf-8")
+            mapping_path = Path(temporary_directory) / "mapping.csv"
+            mapping_path.write_text(
+                "source,replacement\nalpha,omega\n",
+                encoding="utf-8",
+            )
+
+            result = self._run_cli(
+                "plan",
+                "--input",
+                str(root),
+                "--mapping",
+                str(mapping_path),
+                check=False,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Target path would be both a file and a directory", result.stderr)
 
     def _run_cli(self, *arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:
         environment = dict(os.environ)

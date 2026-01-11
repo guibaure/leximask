@@ -9,6 +9,7 @@ from leximask.domain.matcher import rewrite_text
 from leximask.domain.models import MappingRule, PlannedDirectory, PlannedFile
 from leximask.errors import ConflictError
 from leximask.infrastructure.filesystem import DiscoveredFile, discover_supported_files
+from leximask.infrastructure.digests import sha256_text
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +47,8 @@ def _plan_files(
             PlannedFile(
                 source_relative_path=discovered_file.relative_path,
                 target_relative_path=target_relative_path,
+                source_digest=sha256_text(source_text),
+                transformed_digest=sha256_text(transformed_text),
                 source_text=source_text,
                 transformed_text=transformed_text,
                 matches=matches,
@@ -112,3 +115,22 @@ def _validate_path_collisions(
         directory_targets[planned_directory.target_relative_path] = (
             planned_directory.source_relative_path
         )
+
+    for target_file_path, source_file_path in file_targets.items():
+        if target_file_path in directory_targets:
+            raise ConflictError(
+                "Target path would be both a file and a directory: "
+                f"{source_file_path} -> {target_file_path}"
+            )
+
+    file_target_paths = set(file_targets)
+    for target_directory_path, source_directory_path in directory_targets.items():
+        if any(parent == target_directory_path for path in file_target_paths for parent in path.parents):
+            continue
+        if any(path.parent == target_directory_path for path in file_target_paths):
+            continue
+        if any(path == target_directory_path for path in file_target_paths):
+            raise ConflictError(
+                "Target path would be both a directory and a file: "
+                f"{source_directory_path} -> {target_directory_path}"
+            )
