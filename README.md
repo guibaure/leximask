@@ -26,20 +26,48 @@ This first version favours explicitness and reversibility over aggressive optimi
 
 ## Mapping format
 
-Mappings are stored in a two-column CSV file:
+Mappings are stored in a UTF-8 encoded two-column CSV file.
+
+Expected column order:
+
+- column 1: source term;
+- column 2: replacement term.
+
+The first row may optionally be a header. If present, it must be:
 
 ```csv
 source,replacement
-alpha,omega
-token,mask
 ```
 
-Rules are validated before any write:
+Example:
+
+```csv
+alpha,omega
+token,mask
+client,project
+```
+
+Format rules:
+
+- each non-empty row must contain exactly two columns;
+- leading and trailing whitespace around each cell is stripped during loading;
+- empty source values are rejected;
+- empty replacement values are rejected;
+- matching is case-insensitive, but original casing is preserved through sidecar metadata;
+- source terms may match substrings inside file names, directory names, and file contents.
+
+Validation rules enforced before any write:
 
 - sources must be unique case-insensitively;
 - replacements must be unique case-insensitively;
 - a replacement must not also be a source;
 - a replacement must not contain another replacement.
+
+Operational implications:
+
+- rule order in the CSV file does not define execution order;
+- matching is deterministic: longest match first, non-overlapping, left to right;
+- a malformed or conflicting mapping file causes `leximask plan` to fail before generating any writable output.
 
 ## Metadata format
 
