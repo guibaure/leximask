@@ -83,9 +83,12 @@ def validate_root_directory(root_directory: Path) -> Path:
     return resolved_root
 
 
-def discover_supported_files(root_directory: Path) -> tuple[DiscoveredFile, ...]:
+def discover_supported_files(
+    root_directory: Path, excluded_relative_paths: tuple[Path, ...] = ()
+) -> tuple[DiscoveredFile, ...]:
     discovered: list[DiscoveredFile] = []
     unsupported: list[Path] = []
+    excluded_paths = set(excluded_relative_paths)
 
     for current_root, directory_names, file_names in os.walk(root_directory):
         directory_names[:] = sorted(
@@ -95,6 +98,8 @@ def discover_supported_files(root_directory: Path) -> tuple[DiscoveredFile, ...]
         for file_name in sorted(file_names):
             absolute_path = current_root_path / file_name
             relative_path = absolute_path.relative_to(root_directory)
+            if relative_path in excluded_paths:
+                continue
             if file_name.startswith(".leximask."):
                 continue
             if _should_ignore_file(absolute_path):

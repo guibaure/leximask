@@ -63,6 +63,7 @@ def _materialise_transformed_tree(staging_root: Path, plan: PlanResult) -> None:
     staging_root.mkdir(parents=True, exist_ok=False)
     copy_preserved_entries(plan.root_directory, staging_root)
     copy_passthrough_entries(plan.root_directory, staging_root)
+    _copy_mapping_file_if_within_root(plan.root_directory, staging_root, plan.mapping_path)
 
     for planned_file in plan.files:
         write_text_file(
@@ -125,6 +126,11 @@ def _materialise_restored_tree(
     staging_root.mkdir(parents=True, exist_ok=False)
     copy_preserved_entries(transformed_root, staging_root)
     copy_passthrough_entries(transformed_root, staging_root)
+    _copy_mapping_file_if_within_root(
+        transformed_root,
+        staging_root,
+        Path(str(manifest["mapping_path"])),
+    )
 
     sidecars_base = sidecar_root(transformed_root)
     for file_entry in manifest.get("files", []):
@@ -210,3 +216,20 @@ def _plan_digest(plan: PlanResult) -> str:
         ]
     )
     return hashlib.sha256(serialised.encode("utf-8")).hexdigest()
+
+
+def _copy_mapping_file_if_within_root(
+    source_root: Path, destination_root: Path, mapping_path: Path
+) -> None:
+    try:
+        relative_mapping_path = mapping_path.resolve().relative_to(source_root.resolve())
+    except ValueError:
+        return
+
+    source_path = source_root / relative_mapping_path
+    if not source_path.is_file():
+        return
+
+    target_path = destination_root / relative_mapping_path
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source_path, target_path)

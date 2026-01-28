@@ -97,6 +97,8 @@ PYTHONPATH=src python -m leximask.cli apply --input <path to repository to obfus
 PYTHONPATH=src python -m leximask.cli reverse --input <path to repository to obfuscate>
 ```
 
+If the mapping CSV is stored inside the input repository, LexiMask excludes that specific file from the transformation plan and preserves it unchanged.
+
 If the `plan` command succeeds, it writes `.leximask/plan.json` inside the target repository. `apply` consumes that saved plan. If `plan` fails, `apply` will fail because no plan file was produced.
 
 Plan a transformation with the installed CLI:

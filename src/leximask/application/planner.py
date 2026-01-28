@@ -21,7 +21,8 @@ class PlanResult:
 
 
 def build_plan(root_directory: Path, mapping_path: Path, rules: tuple[MappingRule, ...]) -> PlanResult:
-    discovered_files = discover_supported_files(root_directory)
+    excluded_relative_paths = _build_excluded_relative_paths(root_directory, mapping_path)
+    discovered_files = discover_supported_files(root_directory, excluded_relative_paths)
     planned_files = tuple(_plan_files(discovered_files, root_directory, rules))
     planned_directories = tuple(_plan_directories(discovered_files, rules))
     _validate_path_collisions(planned_files, planned_directories)
@@ -31,6 +32,15 @@ def build_plan(root_directory: Path, mapping_path: Path, rules: tuple[MappingRul
         files=planned_files,
         directories=planned_directories,
     )
+
+
+def _build_excluded_relative_paths(
+    root_directory: Path, mapping_path: Path
+) -> tuple[Path, ...]:
+    try:
+        return (mapping_path.resolve().relative_to(root_directory.resolve()),)
+    except ValueError:
+        return ()
 
 
 def _plan_files(
