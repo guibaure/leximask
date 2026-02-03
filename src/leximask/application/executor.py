@@ -76,6 +76,10 @@ def _materialise_transformed_tree(staging_root: Path, plan: PlanResult) -> None:
         plan.mapping_path,
         directory_mapping,
     )
+    _create_planned_directories(
+        staging_root,
+        tuple(directory.target_relative_path for directory in plan.directories),
+    )
 
     for planned_file in plan.files:
         write_text_file(
@@ -150,6 +154,13 @@ def _materialise_restored_tree(
         staging_root,
         Path(str(manifest["mapping_path"])),
         directory_mapping,
+    )
+    _create_planned_directories(
+        staging_root,
+        tuple(
+            Path(entry["original_relative_path"])
+            for entry in manifest.get("directories", [])
+        ),
     )
 
     sidecars_base = sidecar_root(transformed_root)
@@ -304,3 +315,10 @@ def _rewrite_directory_path(path: Path, directory_mapping: dict[Path, Path]) -> 
         suffix_parts = path.parts[len(candidate.parts) :]
         return rewritten_prefix.joinpath(*suffix_parts) if suffix_parts else rewritten_prefix
     return path
+
+
+def _create_planned_directories(staging_root: Path, directories: tuple[Path, ...]) -> None:
+    for directory in directories:
+        if directory == Path("."):
+            continue
+        (staging_root / directory).mkdir(parents=True, exist_ok=True)
