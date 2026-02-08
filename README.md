@@ -76,6 +76,7 @@ Operational implications:
 LexiMask writes metadata under `.leximask/` inside the transformed repository:
 
 - `.leximask/plan.json`: last computed dry-run plan;
+- `.leximask/plan.txt`: human-readable dry-run report;
 - `.leximask/state.json`: applied repository state manifest;
 - `.leximask/sidecars/**/*.leximask.json`: per-file sidecars with original path and exact replacement boundaries.
 
@@ -101,7 +102,7 @@ PYTHONPATH=src python -m leximask.cli reverse --input <path to repository to obf
 
 If the mapping CSV is stored inside the input repository, LexiMask excludes that specific file from the transformation plan and preserves it unchanged.
 
-If the `plan` command succeeds, it writes `.leximask/plan.json` inside the target repository. `apply` consumes that saved plan. If `plan` fails, `apply` will fail because no plan file was produced.
+If the `plan` command succeeds, it writes both `.leximask/plan.json` and `.leximask/plan.txt` inside the target repository. `apply` consumes the saved JSON plan. If `plan` fails, `apply` will fail because no plan file was produced.
 
 Plan a transformation with the installed CLI:
 
