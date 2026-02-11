@@ -177,6 +177,31 @@ def copy_passthrough_entries(
                 shutil.copy2(absolute_path, target_path)
 
 
+def copy_passthrough_directories(
+    source_root: Path,
+    destination_root: Path,
+    transform_relative_path: Callable[[Path], Path] | None = None,
+) -> None:
+    path_transform = transform_relative_path or (lambda relative_path: relative_path)
+    for current_root, directory_names, _file_names in os.walk(source_root):
+        current_root_path = Path(current_root)
+        kept_directory_names: list[str] = []
+        for directory_name in sorted(directory_names):
+            if directory_name == ".leximask":
+                continue
+            source_path = current_root_path / directory_name
+            relative_path = source_path.relative_to(source_root)
+            if directory_name in PRESERVED_DIRECTORY_NAMES:
+                continue
+            if directory_name in IGNORED_NAMES:
+                target_path = destination_root / path_transform(relative_path)
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(source_path, target_path, symlinks=True)
+                continue
+            kept_directory_names.append(directory_name)
+        directory_names[:] = kept_directory_names
+
+
 def _should_copy_passthrough_file(relative_path: Path, absolute_path: Path) -> bool:
     if any(part in IGNORED_NAMES - {".leximask"} for part in relative_path.parts):
         return True
