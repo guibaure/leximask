@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Any
 
 from leximask.application.planner import PlanResult
-from leximask.errors import ConflictError, MetadataError, ValidationError
+from leximask.domain.path_mapping import build_directory_mapping, rewrite_directory_path, rewrite_file_relative_path
+from leximask.errors import MetadataError, ValidationError
 from leximask.infrastructure.digests import sha256_text
 from leximask.infrastructure.filesystem import (
     copy_passthrough_directories,
@@ -62,19 +63,19 @@ def reverse_root(root_directory: Path) -> Path:
 
 def _materialise_transformed_tree(staging_root: Path, plan: PlanResult) -> None:
     staging_root.mkdir(parents=True, exist_ok=False)
-    directory_mapping = _build_directory_mapping(plan.directories, forward=True)
+    directory_mapping = build_directory_mapping(plan.directories, forward=True)
     copy_preserved_entries(plan.root_directory, staging_root)
     copy_passthrough_directories(
         plan.root_directory,
         staging_root,
-        transform_relative_path=lambda relative_path: _rewrite_relative_path(
+        transform_relative_path=lambda relative_path: rewrite_directory_path(
             relative_path, directory_mapping
         ),
     )
     copy_passthrough_entries(
         plan.root_directory,
         staging_root,
-        transform_relative_path=lambda relative_path: _rewrite_relative_path(
+        transform_relative_path=lambda relative_path: rewrite_file_relative_path(
             relative_path, directory_mapping
         ),
     )
@@ -153,14 +154,14 @@ def _materialise_restored_tree(
     copy_passthrough_directories(
         transformed_root,
         staging_root,
-        transform_relative_path=lambda relative_path: _rewrite_relative_path(
+        transform_relative_path=lambda relative_path: rewrite_directory_path(
             relative_path, directory_mapping
         ),
     )
     copy_passthrough_entries(
         transformed_root,
         staging_root,
-        transform_relative_path=lambda relative_path: _rewrite_relative_path(
+        transform_relative_path=lambda relative_path: rewrite_file_relative_path(
             relative_path, directory_mapping
         ),
     )
@@ -279,25 +280,12 @@ def _copy_mapping_file_if_within_root(
     if not source_path.is_file():
         return
 
-    target_path = destination_root / _rewrite_relative_path(
+    target_path = destination_root / rewrite_file_relative_path(
         relative_mapping_path,
         directory_mapping,
     )
     target_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source_path, target_path)
-
-
-def _build_directory_mapping(
-    directories: tuple[Any, ...], forward: bool
-) -> dict[Path, Path]:
-    mapping: dict[Path, Path] = {}
-    for directory in directories:
-        source_path = directory.source_relative_path
-        target_path = directory.target_relative_path
-        mapping[source_path if forward else target_path] = (
-            target_path if forward else source_path
-        )
-    return mapping
 
 
 def _build_directory_mapping_from_manifest(
@@ -311,25 +299,6 @@ def _build_directory_mapping_from_manifest(
             target_path if forward else source_path
         )
     return mapping
-
-
-def _rewrite_relative_path(relative_path: Path, directory_mapping: dict[Path, Path]) -> Path:
-    rewritten_parent = _rewrite_directory_path(relative_path.parent, directory_mapping)
-    return rewritten_parent / relative_path.name
-
-
-def _rewrite_directory_path(path: Path, directory_mapping: dict[Path, Path]) -> Path:
-    if path in (Path(""), Path(".")):
-        return Path(".")
-    for candidate in (path, *path.parents):
-        if candidate in (Path(""), Path(".")):
-            continue
-        rewritten_prefix = directory_mapping.get(candidate)
-        if rewritten_prefix is None:
-            continue
-        suffix_parts = path.parts[len(candidate.parts) :]
-        return rewritten_prefix.joinpath(*suffix_parts) if suffix_parts else rewritten_prefix
-    return path
 
 
 def _create_planned_directories(staging_root: Path, directories: tuple[Path, ...]) -> None:
