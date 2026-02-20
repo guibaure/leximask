@@ -95,14 +95,16 @@ PYTHONPATH=src python -m leximask.cli apply --input ~/Reps/testerx-daemon/
 Equivalent generic example:
 
 ```bash
-PYTHONPATH=src python -m leximask.cli plan --mapping <path to mapping CSV> --input <path to repository to obfuscate>
-PYTHONPATH=src python -m leximask.cli apply --input <path to repository to obfuscate>
-PYTHONPATH=src python -m leximask.cli reverse --input <path to repository to obfuscate>
+PYTHONPATH=src python -m leximask.cli --log-level INFO plan --mapping <path to mapping CSV> --input <path to repository to obfuscate>
+PYTHONPATH=src python -m leximask.cli --log-level INFO apply --input <path to repository to obfuscate>
+PYTHONPATH=src python -m leximask.cli --log-level INFO reverse --input <path to repository to obfuscate>
 ```
 
 If the mapping CSV is stored inside the input repository, LexiMask excludes that specific file from the transformation plan and preserves it unchanged.
 
 If the `plan` command succeeds, it writes both `.leximask/plan.json` and `.leximask/plan.txt` inside the target repository. `apply` consumes the saved JSON plan. If `plan` fails, `apply` will fail because no plan file was produced.
+
+Use `--log-level DEBUG|INFO|WARNING|ERROR|CRITICAL` or the `LEXIMASK_LOG_LEVEL` environment variable to control operational logging.
 
 Plan a transformation with the installed CLI:
 

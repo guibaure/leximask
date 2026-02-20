@@ -208,6 +208,27 @@ class WorkflowIntegrationTests(unittest.TestCase):
             self.assertIn("- alpha.txt -> omega.txt [matches=1]", plan_report)
             self.assertNotIn("- notes.txt -> notes.txt [matches=0]", plan_report)
 
+    def test_log_level_info_emits_operational_logs_to_stderr(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "repo"
+            root.mkdir()
+            (root / "alpha.txt").write_text("alpha\n", encoding="utf-8")
+            mapping_path = Path(temporary_directory) / "mapping.csv"
+            mapping_path.write_text("source,replacement\nalpha,omega\n", encoding="utf-8")
+
+            result = self._run_cli(
+                "--log-level",
+                "INFO",
+                "plan",
+                "--input",
+                str(root),
+                "--mapping",
+                str(mapping_path),
+            )
+
+            self.assertIn("INFO leximask.application.planner Building plan", result.stderr)
+            self.assertIn("INFO leximask.cli Plan artefacts written", result.stderr)
+
     def test_apply_fails_when_source_changes_after_plan(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory) / "repo"
