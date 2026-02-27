@@ -79,9 +79,10 @@ LexiMask writes metadata under `.leximask/` inside the transformed repository:
 - `.leximask/plan.txt`: human-readable dry-run report;
 - `.leximask/state.json`: applied repository state manifest;
 - `.leximask/sidecars/**/*.leximask.json`: per-file sidecars with original path and exact replacement boundaries.
+- `.leximaskignore`: optional repository-local passthrough control file preserved unchanged across apply and reverse.
 
 Sidecars store the transformed offsets and original text fragments required for exact reverse without heuristics.
-`apply` consumes the saved plan artifact rather than recomputing from the mapping file. `reverse` verifies transformed file digests and sidecar consistency before restoring any content.
+`apply` consumes the saved plan artifact rather than recomputing from the mapping file. `reverse` verifies transformed file digests and sidecar consistency before restoring any content. If `.leximaskignore` exists, both `apply` and `reverse` also verify that it still matches the digest captured during planning.
 
 ## Usage
 
@@ -105,6 +106,37 @@ If the mapping CSV is stored inside the input repository, LexiMask excludes that
 If the `plan` command succeeds, it writes both `.leximask/plan.json` and `.leximask/plan.txt` inside the target repository. `apply` consumes the saved JSON plan. If `plan` fails, `apply` will fail because no plan file was produced.
 
 Use `--log-level DEBUG|INFO|WARNING|ERROR|CRITICAL` or the `LEXIMASK_LOG_LEVEL` environment variable to control operational logging.
+
+### `.leximaskignore`
+
+Use `.leximaskignore` at the repository root to preserve additional unsupported artefacts unchanged instead of failing planning.
+
+Format rules:
+
+- UTF-8 text file, one rule per line;
+- blank lines are ignored;
+- lines starting with `#` are treated as comments;
+- rules are repository-relative paths;
+- file rules are exact relative file paths;
+- directory rules must end with `/` or `\` and preserve the whole subtree;
+- `/` and `\` are both accepted in the file, but rules are resolved relative to the repository root;
+- absolute paths, `..`, and ambiguous root markers are rejected.
+
+Example:
+
+```text
+# Preserve runtime artefacts that must stay outside lexical rewriting
+runtime/jobs.sqlite3
+runtime/archive/
+service/.cache/
+```
+
+Operational behaviour:
+
+- ignored files and directories are treated as passthrough artefacts during planning, apply, and reverse;
+- passthrough paths still follow planned parent-directory renames;
+- ignored paths still participate in collision detection, so unsafe target overlaps fail before any write;
+- unsupported files not covered by built-in passthrough handling or `.leximaskignore` still fail planning by design.
 
 Plan a transformation with the installed CLI:
 
@@ -164,13 +196,14 @@ docker run --rm \
 
 - Supported text inputs include source files, Markdown, JSON, YAML, CSV, TOML, INI, CFG, CONF, properties files, `Dockerfile`, `.gitignore`, `.dockerignore`, `.editorconfig`, `.env`, and related text-oriented configuration files.
 - Known binary, media, database, and hidden control artefacts such as `.codex`, `.sqlite3`, and `.mp3` are preserved unchanged and do not block planning.
+- Unknown unsupported artefacts can be preserved explicitly through `.leximaskignore`; unlisted unsupported files still fail planning.
 - Ignored directories such as nested `.codex` trees are preserved as passthrough artefacts during apply and reverse.
 - Preserved passthrough artefacts follow planned parent-directory renames and are restored on reverse.
 - Empty directories inside the supported repository tree are included in planning and are renamed and restored deterministically.
 - Planning fails if a target path would collide with a preserved, ignored, or excluded passthrough path.
-- Unknown unsupported files still cause planning to fail so the transformation boundary remains explicit.
 - Internal directories such as `.git` and `.leximask` are preserved and ignored by scanning.
 - `apply` fails if any planned source file changed after `plan`.
+- `apply` and `reverse` fail if `.leximaskignore` changes after planning.
 - `reverse` fails if transformed files or sidecars drift from the recorded metadata.
 
 ## Developer workflow

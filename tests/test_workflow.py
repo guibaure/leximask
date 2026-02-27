@@ -105,6 +105,41 @@ class WorkflowIntegrationTests(unittest.TestCase):
             self.assertTrue((root / "runtime" / "jobs.sqlite3").is_file())
             self.assertTrue((root / "runtime" / "archive" / "sample-fr.mp3").is_file())
 
+    def test_ignore_file_preserves_explicit_unsupported_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "repo"
+            root.mkdir()
+            (root / ".leximaskignore").write_text(
+                "alpha/runtime/jobs.sqlite3\n"
+                "alpha/runtime/archive/\n",
+                encoding="utf-8",
+            )
+            (root / "alpha").mkdir()
+            (root / "alpha" / "alpha.txt").write_text("alpha token\n", encoding="utf-8")
+            (root / "alpha" / "runtime").mkdir()
+            (root / "alpha" / "runtime" / "jobs.sqlite3").write_bytes(b"\x00\x01")
+            (root / "alpha" / "runtime" / "archive").mkdir()
+            (root / "alpha" / "runtime" / "archive" / "sample-fr.mp3").write_bytes(b"\x00\x01")
+            mapping_path = Path(temporary_directory) / "mapping.csv"
+            mapping_path.write_text("source,replacement\nalpha,omega\ntoken,mask\n", encoding="utf-8")
+
+            self._run_cli("plan", "--input", str(root), "--mapping", str(mapping_path))
+            self._run_cli("apply", "--input", str(root))
+
+            self.assertTrue((root / "omega" / "omega.txt").is_file())
+            self.assertTrue((root / "omega" / "runtime" / "jobs.sqlite3").is_file())
+            self.assertTrue((root / "omega" / "runtime" / "archive" / "sample-fr.mp3").is_file())
+            self.assertEqual(
+                (root / ".leximaskignore").read_text(encoding="utf-8"),
+                "alpha/runtime/jobs.sqlite3\nalpha/runtime/archive/\n",
+            )
+
+            self._run_cli("reverse", "--input", str(root))
+
+            self.assertTrue((root / "alpha" / "alpha.txt").is_file())
+            self.assertTrue((root / "alpha" / "runtime" / "jobs.sqlite3").is_file())
+            self.assertTrue((root / "alpha" / "runtime" / "archive" / "sample-fr.mp3").is_file())
+
     def test_passthrough_files_follow_directory_renames_and_reverse_restores_them(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory) / "repo"
@@ -244,6 +279,24 @@ class WorkflowIntegrationTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("Source file changed after planning", result.stderr)
 
+    def test_apply_fails_when_ignore_rules_change_after_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "repo"
+            root.mkdir()
+            (root / ".leximaskignore").write_text("runtime/jobs.sqlite3\n", encoding="utf-8")
+            (root / "alpha.txt").write_text("alpha\n", encoding="utf-8")
+            (root / "runtime").mkdir()
+            (root / "runtime" / "jobs.sqlite3").write_bytes(b"\x00\x01")
+            mapping_path = Path(temporary_directory) / "mapping.csv"
+            mapping_path.write_text("source,replacement\nalpha,omega\n", encoding="utf-8")
+
+            self._run_cli("plan", "--input", str(root), "--mapping", str(mapping_path))
+            (root / ".leximaskignore").write_text("runtime/archive/\n", encoding="utf-8")
+
+            result = self._run_cli("apply", "--input", str(root), check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Ignore rules changed after planning", result.stderr)
+
     def test_reverse_fails_when_transformed_file_drifts(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory) / "repo"
@@ -259,6 +312,25 @@ class WorkflowIntegrationTests(unittest.TestCase):
             result = self._run_cli("reverse", "--input", str(root), check=False)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("Transformed file content drift detected", result.stderr)
+
+    def test_reverse_fails_when_ignore_rules_change_after_apply(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "repo"
+            root.mkdir()
+            (root / ".leximaskignore").write_text("runtime/jobs.sqlite3\n", encoding="utf-8")
+            (root / "alpha.txt").write_text("alpha\n", encoding="utf-8")
+            (root / "runtime").mkdir()
+            (root / "runtime" / "jobs.sqlite3").write_bytes(b"\x00\x01")
+            mapping_path = Path(temporary_directory) / "mapping.csv"
+            mapping_path.write_text("source,replacement\nalpha,omega\n", encoding="utf-8")
+
+            self._run_cli("plan", "--input", str(root), "--mapping", str(mapping_path))
+            self._run_cli("apply", "--input", str(root))
+            (root / ".leximaskignore").write_text("runtime/archive/\n", encoding="utf-8")
+
+            result = self._run_cli("reverse", "--input", str(root), check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Ignore rules changed after apply", result.stderr)
 
     def test_apply_uses_saved_plan_even_if_mapping_changes(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
