@@ -201,6 +201,7 @@ docker run --rm \
 - Preserved passthrough artefacts follow planned parent-directory renames and are restored on reverse.
 - Empty directories inside the supported repository tree are included in planning and are renamed and restored deterministically.
 - Planning fails if a target path would collide with a preserved, ignored, or excluded passthrough path.
+- The Windows path-rewrite helpers are covered by dedicated unit tests and the CI matrix runs on both Linux and Windows.
 - Internal directories such as `.git` and `.leximask` are preserved and ignored by scanning.
 - `apply` fails if any planned source file changed after `plan`.
 - `apply` and `reverse` fail if `.leximaskignore` changes after planning.
