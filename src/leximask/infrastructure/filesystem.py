@@ -288,8 +288,6 @@ def _should_copy_passthrough_file(
 ) -> bool:
     if any(part in IGNORED_NAMES - {".leximask"} for part in relative_path.parts):
         return True
-    if any(part in PRESERVED_DIRECTORY_NAMES for part in relative_path.parts):
-        return True
     return ignore_rules.matches_file(relative_path) or _should_ignore_file(absolute_path)
 
 
@@ -345,13 +343,15 @@ def replace_directory_atomically(
         else:
             backup_directory.unlink()
 
+    original_moved = False
     try:
         target_directory.rename(backup_directory)
+        original_moved = True
         prepared_directory.rename(target_directory)
         shutil.rmtree(backup_directory)
     except Exception:
-        if target_directory.exists() and not backup_directory.exists():
+        if original_moved and target_directory.exists():
             shutil.rmtree(target_directory)
-        if backup_directory.exists() and not target_directory.exists():
+        if original_moved and backup_directory.exists() and not target_directory.exists():
             backup_directory.rename(target_directory)
         raise
