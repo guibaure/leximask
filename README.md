@@ -10,7 +10,8 @@ The repository now contains an initial production-oriented Python implementation
 - deterministic planning;
 - fail-fast mapping and path validation;
 - apply and reverse workflows;
-- per-file sidecar metadata and a repository state manifest.
+- per-file sidecar metadata and a repository state manifest;
+- immutable saved plans with source and transformed digests.
 
 ## Architecture
 
@@ -49,6 +50,7 @@ LexiMask writes metadata under `.leximask/` inside the transformed repository:
 - `.leximask/sidecars/**/*.leximask.json`: per-file sidecars with original path and exact replacement boundaries.
 
 Sidecars store the transformed offsets and original text fragments required for exact reverse without heuristics.
+`apply` consumes the saved plan artifact rather than recomputing from the mapping file. `reverse` verifies transformed file digests and sidecar consistency before restoring any content.
 
 ## Usage
 
@@ -75,3 +77,19 @@ leximask reverse --input ./repo
 - Only supported text file types are processed in this version.
 - Unsupported files outside ignored internal directories cause planning to fail.
 - Internal directories such as `.git` and `.leximask` are preserved and ignored by scanning.
+- `apply` fails if any planned source file changed after `plan`.
+- `reverse` fails if transformed files or sidecars drift from the recorded metadata.
+
+## Developer workflow
+
+Run the current validation set:
+
+```bash
+make test
+```
+
+Inspect the CLI:
+
+```bash
+make cli
+```

@@ -31,6 +31,8 @@ class PlannedFile:
 
     source_relative_path: Path
     target_relative_path: Path
+    source_digest: str
+    transformed_digest: str
     source_text: str
     transformed_text: str
     matches: tuple[Match, ...]

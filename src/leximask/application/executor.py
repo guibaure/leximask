@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 from pathlib import Path
 from typing import Any
 
 from leximask.application.planner import PlanResult
-from leximask.errors import ConflictError, MetadataError
+from leximask.errors import ConflictError, MetadataError, ValidationError
+from leximask.infrastructure.digests import sha256_text
 from leximask.infrastructure.filesystem import (
     copy_preserved_entries,
     create_staging_directory,
@@ -26,6 +28,7 @@ from leximask.infrastructure.sidecar import (
 
 def apply_plan(plan: PlanResult) -> Path:
     root_directory = plan.root_directory
+    _validate_apply_inputs(root_directory, plan)
     staging_directory = create_staging_directory(root_directory, "apply")
     staging_root = staging_directory / root_directory.name
     try:
@@ -72,6 +75,8 @@ def _materialise_transformed_tree(staging_root: Path, plan: PlanResult) -> None:
                 "format": "leximask/sidecar/v1",
                 "original_relative_path": str(planned_file.source_relative_path),
                 "transformed_relative_path": str(planned_file.target_relative_path),
+                "source_digest": planned_file.source_digest,
+                "transformed_digest": planned_file.transformed_digest,
                 "matches": [
                     {
                         "replacement_start": match.start,
@@ -91,6 +96,7 @@ def _materialise_transformed_tree(staging_root: Path, plan: PlanResult) -> None:
             "format": "leximask/state/v1",
             "mapping_path": str(plan.mapping_path.resolve()),
             "root_name": plan.root_directory.name,
+            "plan_digest": _plan_digest(plan),
             "directories": [
                 {
                     "original_relative_path": str(directory.source_relative_path),
@@ -102,6 +108,8 @@ def _materialise_transformed_tree(staging_root: Path, plan: PlanResult) -> None:
                 {
                     "original_relative_path": str(planned_file.source_relative_path),
                     "transformed_relative_path": str(planned_file.target_relative_path),
+                    "source_digest": planned_file.source_digest,
+                    "transformed_digest": planned_file.transformed_digest,
                 }
                 for planned_file in plan.files
             ],
@@ -119,15 +127,32 @@ def _materialise_restored_tree(
     for file_entry in manifest.get("files", []):
         transformed_relative_path = Path(file_entry["transformed_relative_path"])
         original_relative_path = Path(file_entry["original_relative_path"])
+        transformed_file_path = transformed_root / transformed_relative_path
+        if not transformed_file_path.is_file():
+            raise MetadataError(f"Transformed file is missing: {transformed_relative_path}")
         transformed_text = (transformed_root / transformed_relative_path).read_text(
             encoding="utf-8"
         )
+        transformed_digest = sha256_text(transformed_text)
+        if transformed_digest != str(file_entry["transformed_digest"]):
+            raise MetadataError(
+                f"Transformed file content drift detected: {transformed_relative_path}"
+            )
         sidecar = load_json_file(sidecar_path(sidecars_base, transformed_relative_path))
         if sidecar.get("format") != "leximask/sidecar/v1":
             raise MetadataError(
                 f"Unsupported sidecar format for {transformed_relative_path}"
             )
+        if str(sidecar.get("transformed_digest")) != transformed_digest:
+            raise MetadataError(
+                f"Sidecar digest mismatch for {transformed_relative_path}"
+            )
         restored_text = _restore_text(transformed_text, sidecar)
+        restored_digest = sha256_text(restored_text)
+        if restored_digest != str(file_entry["source_digest"]):
+            raise MetadataError(
+                f"Restored file integrity check failed: {original_relative_path}"
+            )
         write_text_file(staging_root / original_relative_path, restored_text)
 
 
@@ -145,3 +170,40 @@ def _restore_text(transformed_text: str, sidecar: dict[str, Any]) -> str:
         cursor = end
     fragments.append(transformed_text[cursor:])
     return "".join(fragments)
+
+
+def _validate_apply_inputs(root_directory: Path, plan: PlanResult) -> None:
+    if plan.root_directory.resolve() != root_directory.resolve():
+        raise ValidationError(
+            f"Saved plan targets {plan.root_directory}, not requested root {root_directory}"
+        )
+    for planned_file in plan.files:
+        source_path = root_directory / planned_file.source_relative_path
+        if not source_path.is_file():
+            raise ValidationError(f"Planned source file is missing: {planned_file.source_relative_path}")
+        source_text = source_path.read_text(encoding="utf-8")
+        current_digest = sha256_text(source_text)
+        if current_digest != planned_file.source_digest:
+            raise ValidationError(
+                "Source file changed after planning: "
+                f"{planned_file.source_relative_path}"
+            )
+
+
+def _plan_digest(plan: PlanResult) -> str:
+    serialised = "\n".join(
+        [
+            str(plan.root_directory.resolve()),
+            str(plan.mapping_path.resolve()),
+            *(
+                f"{planned_file.source_relative_path}|{planned_file.target_relative_path}|"
+                f"{planned_file.source_digest}|{planned_file.transformed_digest}"
+                for planned_file in plan.files
+            ),
+            *(
+                f"{directory.source_relative_path}|{directory.target_relative_path}"
+                for directory in plan.directories
+            ),
+        ]
+    )
+    return hashlib.sha256(serialised.encode("utf-8")).hexdigest()
