@@ -82,7 +82,24 @@ Sidecars store the transformed offsets and original text fragments required for 
 
 ## Usage
 
-Plan a transformation:
+Run directly from the repository without installation:
+
+```bash
+PYTHONPATH=src python -m leximask.cli plan --mapping ~/Reps/testerx-daemon/mapping.csv --input ~/Reps/testerx-daemon/
+PYTHONPATH=src python -m leximask.cli apply --input ~/Reps/testerx-daemon/
+```
+
+Equivalent generic example:
+
+```bash
+PYTHONPATH=src python -m leximask.cli plan --mapping <path to mapping CSV> --input <path to repository to obfuscate>
+PYTHONPATH=src python -m leximask.cli apply --input <path to repository to obfuscate>
+PYTHONPATH=src python -m leximask.cli reverse --input <path to repository to obfuscate>
+```
+
+If the `plan` command succeeds, it writes `.leximask/plan.json` inside the target repository. `apply` consumes that saved plan. If `plan` fails, `apply` will fail because no plan file was produced.
+
+Plan a transformation with the installed CLI:
 
 ```bash
 leximask plan --input ./repo --mapping ./mapping.csv
@@ -100,10 +117,47 @@ Reverse a previous apply:
 leximask reverse --input ./repo
 ```
 
+### Docker usage
+
+Build the image:
+
+```bash
+docker build -t leximask:local .
+```
+
+Run LexiMask against a repository from the host with bind mounts:
+
+```bash
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  -v "<path to repository to obfuscate>:/work/repo" \
+  -v "<path to mapping CSV>:/work/mapping.csv:ro" \
+  leximask:local plan --input /work/repo --mapping /work/mapping.csv
+```
+
+Apply the saved plan from the same mounted repository:
+
+```bash
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  -v "<path to repository to obfuscate>:/work/repo" \
+  leximask:local apply --input /work/repo
+```
+
+Reverse a previous apply from Docker:
+
+```bash
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  -v "<path to repository to obfuscate>:/work/repo" \
+  leximask:local reverse --input /work/repo
+```
+
 ## Notes
 
-- Only supported text file types are processed in this version.
-- Unsupported files outside ignored internal directories cause planning to fail.
+- Supported text inputs include source files, Markdown, JSON, YAML, CSV, TOML, INI, CFG, CONF, properties files, `Dockerfile`, `.gitignore`, `.dockerignore`, `.editorconfig`, `.env`, and related text-oriented configuration files.
+- Known binary, media, database, and hidden control artefacts such as `.codex`, `.sqlite3`, and `.mp3` are preserved unchanged and do not block planning.
+- Unknown unsupported files still cause planning to fail so the transformation boundary remains explicit.
 - Internal directories such as `.git` and `.leximask` are preserved and ignored by scanning.
 - `apply` fails if any planned source file changed after `plan`.
 - `reverse` fails if transformed files or sidecars drift from the recorded metadata.
