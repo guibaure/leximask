@@ -69,6 +69,32 @@ class WorkflowIntegrationTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("Unsupported files", result.stderr)
 
+    def test_plan_supports_common_config_files_and_ignores_runtime_binaries(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "repo"
+            root.mkdir()
+            (root / ".codex").write_text("ignore me\n", encoding="utf-8")
+            (root / ".gitignore").write_text("alpha\n", encoding="utf-8")
+            (root / ".dockerignore").write_text("alpha\n", encoding="utf-8")
+            (root / "Dockerfile").write_text("FROM alpha\n", encoding="utf-8")
+            (root / "pyproject.toml").write_text("[project]\nname='alpha'\n", encoding="utf-8")
+            (root / "runtime").mkdir()
+            (root / "runtime" / "jobs.sqlite3").write_bytes(b"\x00\x01")
+            (root / "runtime" / "archive").mkdir()
+            (root / "runtime" / "archive" / "sample-fr.mp3").write_bytes(b"\x00\x01")
+            mapping_path = Path(temporary_directory) / "mapping.csv"
+            mapping_path.write_text("source,replacement\nalpha,omega\n", encoding="utf-8")
+
+            self._run_cli("plan", "--input", str(root), "--mapping", str(mapping_path))
+            self._run_cli("apply", "--input", str(root))
+
+            self.assertEqual((root / ".gitignore").read_text(encoding="utf-8"), "omega\n")
+            self.assertEqual((root / ".dockerignore").read_text(encoding="utf-8"), "omega\n")
+            self.assertEqual((root / "Dockerfile").read_text(encoding="utf-8"), "FROM omega\n")
+            self.assertIn("omega", (root / "pyproject.toml").read_text(encoding="utf-8"))
+            self.assertTrue((root / "runtime" / "jobs.sqlite3").is_file())
+            self.assertTrue((root / "runtime" / "archive" / "sample-fr.mp3").is_file())
+
     def test_apply_fails_when_source_changes_after_plan(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory) / "repo"

@@ -11,6 +11,7 @@ from leximask.application.planner import PlanResult
 from leximask.errors import ConflictError, MetadataError, ValidationError
 from leximask.infrastructure.digests import sha256_text
 from leximask.infrastructure.filesystem import (
+    copy_passthrough_entries,
     copy_preserved_entries,
     create_staging_directory,
     replace_directory_atomically,
@@ -61,6 +62,7 @@ def reverse_root(root_directory: Path) -> Path:
 def _materialise_transformed_tree(staging_root: Path, plan: PlanResult) -> None:
     staging_root.mkdir(parents=True, exist_ok=False)
     copy_preserved_entries(plan.root_directory, staging_root)
+    copy_passthrough_entries(plan.root_directory, staging_root)
 
     for planned_file in plan.files:
         write_text_file(
@@ -122,6 +124,7 @@ def _materialise_restored_tree(
 ) -> None:
     staging_root.mkdir(parents=True, exist_ok=False)
     copy_preserved_entries(transformed_root, staging_root)
+    copy_passthrough_entries(transformed_root, staging_root)
 
     sidecars_base = sidecar_root(transformed_root)
     for file_entry in manifest.get("files", []):
