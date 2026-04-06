@@ -74,6 +74,8 @@ class WorkflowIntegrationTests(unittest.TestCase):
             root = Path(temporary_directory) / "repo"
             root.mkdir()
             (root / ".codex").write_text("ignore me\n", encoding="utf-8")
+            (root / ".git").mkdir()
+            (root / ".git" / "config").write_text("[core]\nrepositoryformatversion = 0\n", encoding="utf-8")
             (root / ".gitignore").write_text("alpha\n", encoding="utf-8")
             (root / ".dockerignore").write_text("alpha\n", encoding="utf-8")
             (root / "Dockerfile").write_text("FROM alpha\n", encoding="utf-8")
@@ -92,6 +94,7 @@ class WorkflowIntegrationTests(unittest.TestCase):
             self.assertEqual((root / ".dockerignore").read_text(encoding="utf-8"), "omega\n")
             self.assertEqual((root / "Dockerfile").read_text(encoding="utf-8"), "FROM omega\n")
             self.assertIn("omega", (root / "pyproject.toml").read_text(encoding="utf-8"))
+            self.assertTrue((root / ".git" / "config").is_file())
             self.assertTrue((root / "runtime" / "jobs.sqlite3").is_file())
             self.assertTrue((root / "runtime" / "archive" / "sample-fr.mp3").is_file())
 

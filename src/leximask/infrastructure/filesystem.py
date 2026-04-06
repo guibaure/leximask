@@ -138,8 +138,9 @@ def copy_preserved_entries(source_root: Path, destination_root: Path) -> None:
 
 def copy_passthrough_entries(source_root: Path, destination_root: Path) -> None:
     for current_root, directory_names, file_names in os.walk(source_root):
-        if ".leximask" in directory_names:
-            directory_names.remove(".leximask")
+        directory_names[:] = sorted(
+            name for name in directory_names if name not in IGNORED_NAMES
+        )
         current_root_path = Path(current_root)
         for file_name in sorted(file_names):
             absolute_path = current_root_path / file_name
