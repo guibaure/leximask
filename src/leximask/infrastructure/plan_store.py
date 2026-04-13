@@ -8,6 +8,10 @@ from typing import Any
 from leximask.application.planner import PlanResult
 from leximask.domain.models import Match, PlannedDirectory, PlannedFile
 from leximask.errors import ValidationError
+from leximask.infrastructure.repository_paths import (
+    deserialise_repository_relative_path,
+    serialise_repository_relative_path,
+)
 
 
 PLAN_FORMAT = "leximask/plan/v1"
@@ -21,8 +25,12 @@ def serialise_plan(plan: PlanResult) -> dict[str, object]:
         "ignore_file_digest": plan.ignore_file_digest,
         "files": [
             {
-                "source_relative_path": str(planned_file.source_relative_path),
-                "target_relative_path": str(planned_file.target_relative_path),
+                "source_relative_path": serialise_repository_relative_path(
+                    planned_file.source_relative_path
+                ),
+                "target_relative_path": serialise_repository_relative_path(
+                    planned_file.target_relative_path
+                ),
                 "source_digest": planned_file.source_digest,
                 "transformed_digest": planned_file.transformed_digest,
                 "transformed_text": planned_file.transformed_text,
@@ -41,8 +49,12 @@ def serialise_plan(plan: PlanResult) -> dict[str, object]:
         ],
         "directories": [
             {
-                "source_relative_path": str(directory.source_relative_path),
-                "target_relative_path": str(directory.target_relative_path),
+                "source_relative_path": serialise_repository_relative_path(
+                    directory.source_relative_path
+                ),
+                "target_relative_path": serialise_repository_relative_path(
+                    directory.target_relative_path
+                ),
             }
             for directory in plan.directories
         ],
@@ -55,8 +67,12 @@ def deserialise_plan(payload: dict[str, Any]) -> PlanResult:
 
     files = tuple(
         PlannedFile(
-            source_relative_path=Path(str(entry["source_relative_path"])),
-            target_relative_path=Path(str(entry["target_relative_path"])),
+            source_relative_path=deserialise_repository_relative_path(
+                entry["source_relative_path"]
+            ),
+            target_relative_path=deserialise_repository_relative_path(
+                entry["target_relative_path"]
+            ),
             source_digest=str(entry["source_digest"]),
             transformed_digest=str(entry["transformed_digest"]),
             source_text="",
@@ -76,8 +92,12 @@ def deserialise_plan(payload: dict[str, Any]) -> PlanResult:
     )
     directories = tuple(
         PlannedDirectory(
-            source_relative_path=Path(str(entry["source_relative_path"])),
-            target_relative_path=Path(str(entry["target_relative_path"])),
+            source_relative_path=deserialise_repository_relative_path(
+                entry["source_relative_path"]
+            ),
+            target_relative_path=deserialise_repository_relative_path(
+                entry["target_relative_path"]
+            ),
         )
         for entry in payload["directories"]
     )

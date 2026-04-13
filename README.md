@@ -82,6 +82,7 @@ LexiMask writes metadata under `.leximask/` inside the transformed repository:
 - `.leximaskignore`: optional repository-local passthrough control file preserved unchanged across apply and reverse.
 
 Sidecars store the transformed offsets and original text fragments required for exact reverse without heuristics.
+Repository-relative paths stored in metadata use POSIX `/` separators on every operating system.
 `apply` consumes the saved plan artifact rather than recomputing from the mapping file. `reverse` verifies transformed file digests and sidecar consistency before restoring any content. If `.leximaskignore` exists, both `apply` and `reverse` also verify that it still matches the digest captured during planning.
 
 ## Usage
