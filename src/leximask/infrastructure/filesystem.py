@@ -7,6 +7,7 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from leximask.errors import ValidationError
 
@@ -141,7 +142,12 @@ def copy_preserved_entries(source_root: Path, destination_root: Path) -> None:
             shutil.copy2(entry, target_path)
 
 
-def copy_passthrough_entries(source_root: Path, destination_root: Path) -> None:
+def copy_passthrough_entries(
+    source_root: Path,
+    destination_root: Path,
+    transform_relative_path: Callable[[Path], Path] | None = None,
+) -> None:
+    path_transform = transform_relative_path or (lambda relative_path: relative_path)
     for current_root, directory_names, file_names in os.walk(source_root):
         directory_names[:] = sorted(
             name for name in directory_names if name not in IGNORED_NAMES
@@ -151,7 +157,7 @@ def copy_passthrough_entries(source_root: Path, destination_root: Path) -> None:
             absolute_path = current_root_path / file_name
             relative_path = absolute_path.relative_to(source_root)
             if _should_copy_passthrough_file(relative_path, absolute_path):
-                target_path = destination_root / relative_path
+                target_path = destination_root / path_transform(relative_path)
                 target_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(absolute_path, target_path)
 

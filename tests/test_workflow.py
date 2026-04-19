@@ -32,6 +32,8 @@ class WorkflowIntegrationTests(unittest.TestCase):
 
             self._run_cli("apply", "--input", str(root))
             self.assertTrue((root / "src" / "omega" / "omega.py").is_file())
+            self.assertFalse((root / "src" / "alpha" / "alpha.py").exists())
+            self.assertFalse((root / "src" / "alpha").exists())
             self.assertEqual(
                 (root / "src" / "omega" / "omega.py").read_text(encoding="utf-8"),
                 "print('Omega mask')\n",
@@ -97,6 +99,33 @@ class WorkflowIntegrationTests(unittest.TestCase):
             self.assertTrue((root / ".git" / "config").is_file())
             self.assertTrue((root / "runtime" / "jobs.sqlite3").is_file())
             self.assertTrue((root / "runtime" / "archive" / "sample-fr.mp3").is_file())
+
+    def test_passthrough_files_follow_directory_renames_and_reverse_restores_them(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "repo"
+            root.mkdir()
+            (root / "alpha").mkdir()
+            (root / "alpha" / "alpha.txt").write_text("alpha token\n", encoding="utf-8")
+            (root / "alpha" / ".codex").write_text("control\n", encoding="utf-8")
+            (root / "alpha" / "runtime").mkdir()
+            (root / "alpha" / "runtime" / "sample.mp3").write_bytes(b"\x00\x01")
+            mapping_path = Path(temporary_directory) / "mapping.csv"
+            mapping_path.write_text("source,replacement\nalpha,omega\ntoken,mask\n", encoding="utf-8")
+
+            self._run_cli("plan", "--input", str(root), "--mapping", str(mapping_path))
+            self._run_cli("apply", "--input", str(root))
+
+            self.assertTrue((root / "omega" / "omega.txt").is_file())
+            self.assertFalse((root / "alpha").exists())
+            self.assertTrue((root / "omega" / ".codex").is_file())
+            self.assertTrue((root / "omega" / "runtime" / "sample.mp3").is_file())
+
+            self._run_cli("reverse", "--input", str(root))
+
+            self.assertTrue((root / "alpha" / "alpha.txt").is_file())
+            self.assertTrue((root / "alpha" / ".codex").is_file())
+            self.assertTrue((root / "alpha" / "runtime" / "sample.mp3").is_file())
+            self.assertFalse((root / "omega").exists())
 
     def test_apply_fails_when_source_changes_after_plan(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
