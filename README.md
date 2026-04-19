@@ -88,8 +88,8 @@ Sidecars store the transformed offsets and original text fragments required for 
 Run directly from the repository without installation:
 
 ```bash
-PYTHONPATH=src python -m leximask.cli plan --mapping ~/Reps/testerx-daemon/mapping.csv --input ~/Reps/testerx-daemon/
-PYTHONPATH=src python -m leximask.cli apply --input ~/Reps/testerx-daemon/
+PYTHONPATH=src python -m leximask.cli plan --mapping "<path to mapping CSV>" --input "<path to repository to obfuscate>"
+PYTHONPATH=src python -m leximask.cli apply --input "<path to repository to obfuscate>"
 ```
 
 Equivalent generic example:
