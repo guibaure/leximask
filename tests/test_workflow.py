@@ -323,6 +323,47 @@ class WorkflowIntegrationTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("Target path would be both a file and a directory", result.stderr)
 
+    def test_plan_fails_when_target_file_collides_with_excluded_mapping_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "repo"
+            root.mkdir()
+            (root / "alpha.csv").write_text("alpha\n", encoding="utf-8")
+            mapping_path = root / "mapping.csv"
+            mapping_path.write_text("source,replacement\nalpha,mapping\n", encoding="utf-8")
+
+            result = self._run_cli(
+                "plan",
+                "--input",
+                str(root),
+                "--mapping",
+                str(mapping_path),
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Target file path collides with passthrough file", result.stderr)
+
+    def test_plan_fails_when_target_file_collides_with_ignored_passthrough_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "repo"
+            root.mkdir()
+            (root / "alpha.txt").write_text("alpha\n", encoding="utf-8")
+            (root / "alpha.sqlite3").write_bytes(b"\x00\x01")
+            mapping_path = Path(temporary_directory) / "mapping.csv"
+            mapping_path.write_text("source,replacement\ntxt,sqlite3\n", encoding="utf-8")
+
+            result = self._run_cli(
+                "plan",
+                "--input",
+                str(root),
+                "--mapping",
+                str(mapping_path),
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Target file path collides with passthrough file", result.stderr)
+
     def _run_cli(self, *arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:
         environment = dict(os.environ)
         source_directory = Path(__file__).resolve().parents[1] / "src"

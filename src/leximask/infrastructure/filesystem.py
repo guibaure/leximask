@@ -138,6 +138,48 @@ def discover_supported_directories(root_directory: Path) -> tuple[Path, ...]:
     return tuple(sorted(discovered, key=lambda path: (len(path.parts), path.parts)))
 
 
+def discover_passthrough_directories(root_directory: Path) -> tuple[Path, ...]:
+    discovered: list[Path] = []
+
+    for current_root, directory_names, _file_names in os.walk(root_directory):
+        current_root_path = Path(current_root)
+        kept_directory_names: list[str] = []
+        for directory_name in sorted(directory_names):
+            source_path = current_root_path / directory_name
+            relative_path = source_path.relative_to(root_directory)
+            if directory_name in PRESERVED_DIRECTORY_NAMES or directory_name in IGNORED_NAMES:
+                discovered.append(relative_path)
+                continue
+            kept_directory_names.append(directory_name)
+        directory_names[:] = kept_directory_names
+
+    return tuple(sorted(discovered, key=lambda path: (len(path.parts), path.parts)))
+
+
+def discover_passthrough_files(
+    root_directory: Path, excluded_relative_paths: tuple[Path, ...] = ()
+) -> tuple[Path, ...]:
+    discovered: list[Path] = []
+    excluded_paths = set(excluded_relative_paths)
+
+    for current_root, directory_names, file_names in os.walk(root_directory):
+        current_root_path = Path(current_root)
+        kept_directory_names: list[str] = []
+        for directory_name in sorted(directory_names):
+            if directory_name in PRESERVED_DIRECTORY_NAMES or directory_name in IGNORED_NAMES:
+                continue
+            kept_directory_names.append(directory_name)
+        directory_names[:] = kept_directory_names
+
+        for file_name in sorted(file_names):
+            absolute_path = current_root_path / file_name
+            relative_path = absolute_path.relative_to(root_directory)
+            if relative_path in excluded_paths or _should_ignore_file(absolute_path):
+                discovered.append(relative_path)
+
+    return tuple(sorted(discovered, key=lambda path: path.parts))
+
+
 def _is_supported_text_file(path: Path) -> bool:
     return path.name in SUPPORTED_FILE_NAMES or path.suffix.lower() in SUPPORTED_SUFFIXES
 

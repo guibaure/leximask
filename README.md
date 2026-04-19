@@ -165,6 +165,7 @@ docker run --rm \
 - Ignored directories such as nested `.codex` trees are preserved as passthrough artefacts during apply and reverse.
 - Preserved passthrough artefacts follow planned parent-directory renames and are restored on reverse.
 - Empty directories inside the supported repository tree are included in planning and are renamed and restored deterministically.
+- Planning fails if a target path would collide with a preserved, ignored, or excluded passthrough path.
 - Unknown unsupported files still cause planning to fail so the transformation boundary remains explicit.
 - Internal directories such as `.git` and `.leximask` are preserved and ignored by scanning.
 - `apply` fails if any planned source file changed after `plan`.
