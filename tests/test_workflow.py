@@ -144,6 +144,28 @@ class WorkflowIntegrationTests(unittest.TestCase):
             self.assertTrue((root / "omega.txt").is_file())
             self.assertFalse((root / "sigma.txt").exists())
 
+    def test_mapping_file_inside_input_root_is_excluded_from_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "repo"
+            root.mkdir()
+            (root / "alpha.txt").write_text("alpha\n", encoding="utf-8")
+            mapping_path = root / "mapping.csv"
+            mapping_path.write_text("source,replacement\nalpha,omega\n", encoding="utf-8")
+
+            self._run_cli("plan", "--input", str(root), "--mapping", str(mapping_path))
+            plan_data = json.loads((root / ".leximask" / "plan.json").read_text(encoding="utf-8"))
+            planned_sources = {entry["source_relative_path"] for entry in plan_data["files"]}
+
+            self.assertNotIn("mapping.csv", planned_sources)
+
+            self._run_cli("apply", "--input", str(root))
+            self.assertTrue((root / "omega.txt").is_file())
+            self.assertTrue((root / "mapping.csv").is_file())
+            self.assertEqual(
+                (root / "mapping.csv").read_text(encoding="utf-8"),
+                "source,replacement\nalpha,omega\n",
+            )
+
     def test_plan_fails_on_file_target_collision(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory) / "repo"
