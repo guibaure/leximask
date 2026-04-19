@@ -11,6 +11,7 @@ The repository now contains an initial production-oriented Python implementation
 - fail-fast mapping and path validation;
 - apply and reverse workflows;
 - transactional file and directory path rewrites for planned entries;
+- empty-directory rename and restoration support;
 - per-file sidecar metadata and a repository state manifest;
 - immutable saved plans with source and transformed digests.
 
@@ -161,6 +162,7 @@ docker run --rm \
 - Supported text inputs include source files, Markdown, JSON, YAML, CSV, TOML, INI, CFG, CONF, properties files, `Dockerfile`, `.gitignore`, `.dockerignore`, `.editorconfig`, `.env`, and related text-oriented configuration files.
 - Known binary, media, database, and hidden control artefacts such as `.codex`, `.sqlite3`, and `.mp3` are preserved unchanged and do not block planning.
 - Preserved passthrough artefacts follow planned parent-directory renames and are restored on reverse.
+- Empty directories inside the supported repository tree are included in planning and are renamed and restored deterministically.
 - Unknown unsupported files still cause planning to fail so the transformation boundary remains explicit.
 - Internal directories such as `.git` and `.leximask` are preserved and ignored by scanning.
 - `apply` fails if any planned source file changed after `plan`.

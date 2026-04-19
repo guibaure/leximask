@@ -123,6 +123,21 @@ def discover_supported_files(
     return tuple(discovered)
 
 
+def discover_supported_directories(root_directory: Path) -> tuple[Path, ...]:
+    discovered: list[Path] = []
+
+    for current_root, directory_names, _file_names in os.walk(root_directory):
+        directory_names[:] = sorted(
+            name for name in directory_names if name not in IGNORED_NAMES
+        )
+        current_root_path = Path(current_root)
+        if current_root_path == root_directory:
+            continue
+        discovered.append(current_root_path.relative_to(root_directory))
+
+    return tuple(sorted(discovered, key=lambda path: (len(path.parts), path.parts)))
+
+
 def _is_supported_text_file(path: Path) -> bool:
     return path.name in SUPPORTED_FILE_NAMES or path.suffix.lower() in SUPPORTED_SUFFIXES
 

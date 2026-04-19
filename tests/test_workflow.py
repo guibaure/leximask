@@ -127,6 +127,41 @@ class WorkflowIntegrationTests(unittest.TestCase):
             self.assertTrue((root / "alpha" / "runtime" / "sample.mp3").is_file())
             self.assertFalse((root / "omega").exists())
 
+    def test_empty_directories_are_renamed_and_restored(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "repo"
+            root.mkdir()
+            (root / "alpha").mkdir()
+            (root / "alpha" / "empty").mkdir()
+            (root / "alpha" / "empty" / "nested").mkdir()
+            mapping_path = Path(temporary_directory) / "mapping.csv"
+            mapping_path.write_text("source,replacement\nalpha,omega\n", encoding="utf-8")
+
+            self._run_cli("plan", "--input", str(root), "--mapping", str(mapping_path))
+            plan_data = json.loads((root / ".leximask" / "plan.json").read_text(encoding="utf-8"))
+            planned_directories = {
+                entry["source_relative_path"]: entry["target_relative_path"]
+                for entry in plan_data["directories"]
+            }
+
+            self.assertEqual(planned_directories["alpha"], "omega")
+            self.assertEqual(planned_directories["alpha/empty"], "omega/empty")
+            self.assertEqual(planned_directories["alpha/empty/nested"], "omega/empty/nested")
+
+            self._run_cli("apply", "--input", str(root))
+
+            self.assertTrue((root / "omega").is_dir())
+            self.assertTrue((root / "omega" / "empty").is_dir())
+            self.assertTrue((root / "omega" / "empty" / "nested").is_dir())
+            self.assertFalse((root / "alpha").exists())
+
+            self._run_cli("reverse", "--input", str(root))
+
+            self.assertTrue((root / "alpha").is_dir())
+            self.assertTrue((root / "alpha" / "empty").is_dir())
+            self.assertTrue((root / "alpha" / "empty" / "nested").is_dir())
+            self.assertFalse((root / "omega").exists())
+
     def test_apply_fails_when_source_changes_after_plan(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory) / "repo"

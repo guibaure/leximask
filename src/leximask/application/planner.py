@@ -8,7 +8,11 @@ from pathlib import Path
 from leximask.domain.matcher import rewrite_text
 from leximask.domain.models import MappingRule, PlannedDirectory, PlannedFile
 from leximask.errors import ConflictError
-from leximask.infrastructure.filesystem import DiscoveredFile, discover_supported_files
+from leximask.infrastructure.filesystem import (
+    DiscoveredFile,
+    discover_supported_directories,
+    discover_supported_files,
+)
 from leximask.infrastructure.digests import sha256_text
 
 
@@ -23,8 +27,9 @@ class PlanResult:
 def build_plan(root_directory: Path, mapping_path: Path, rules: tuple[MappingRule, ...]) -> PlanResult:
     excluded_relative_paths = _build_excluded_relative_paths(root_directory, mapping_path)
     discovered_files = discover_supported_files(root_directory, excluded_relative_paths)
-    planned_files = tuple(_plan_files(discovered_files, root_directory, rules))
-    planned_directories = tuple(_plan_directories(discovered_files, rules))
+    discovered_directories = discover_supported_directories(root_directory)
+    planned_files = tuple(_plan_files(discovered_files, rules))
+    planned_directories = tuple(_plan_directories(discovered_files, discovered_directories, rules))
     _validate_path_collisions(planned_files, planned_directories)
     return PlanResult(
         root_directory=root_directory,
@@ -45,7 +50,6 @@ def _build_excluded_relative_paths(
 
 def _plan_files(
     discovered_files: tuple[DiscoveredFile, ...],
-    root_directory: Path,
     rules: tuple[MappingRule, ...],
 ) -> list[PlannedFile]:
     planned_files: list[PlannedFile] = []
@@ -68,15 +72,18 @@ def _plan_files(
 
 
 def _plan_directories(
-    discovered_files: tuple[DiscoveredFile, ...], rules: tuple[MappingRule, ...]
+    discovered_files: tuple[DiscoveredFile, ...],
+    discovered_directories: tuple[Path, ...],
+    rules: tuple[MappingRule, ...],
 ) -> list[PlannedDirectory]:
-    directory_paths: set[Path] = {Path(".")}
+    directory_paths: set[Path] = set(discovered_directories)
     for discovered_file in discovered_files:
         directory_paths.update(discovered_file.relative_path.parents)
 
     planned_directories: list[PlannedDirectory] = []
     for source_relative_path in sorted(
-        (path for path in directory_paths if path != Path(".")), key=lambda path: len(path.parts)
+        (path for path in directory_paths if path != Path(".")),
+        key=lambda path: (len(path.parts), path.parts),
     ):
         target_relative_path = _rewrite_relative_path(source_relative_path, rules)
         planned_directories.append(
