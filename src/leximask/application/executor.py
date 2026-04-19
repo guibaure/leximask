@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import shutil
 from pathlib import Path
 from typing import Any
@@ -28,9 +29,12 @@ from leximask.infrastructure.sidecar import (
     load_json_file,
 )
 
+LOGGER = logging.getLogger(__name__)
+
 
 def apply_plan(plan: PlanResult) -> Path:
     root_directory = plan.root_directory
+    LOGGER.info("Applying plan to %s", root_directory)
     _validate_apply_inputs(root_directory, plan)
     staging_directory = create_staging_directory(root_directory, "apply")
     staging_root = staging_directory / root_directory.name
@@ -41,10 +45,12 @@ def apply_plan(plan: PlanResult) -> Path:
         if staging_directory.exists():
             shutil.rmtree(staging_directory, ignore_errors=True)
         raise
+    LOGGER.info("Apply completed for %s", root_directory)
     return root_directory
 
 
 def reverse_root(root_directory: Path) -> Path:
+    LOGGER.info("Reversing transformed repository %s", root_directory)
     manifest = load_json_file(state_path(root_directory))
     if manifest.get("format") != "leximask/state/v1":
         raise MetadataError("Unsupported state file format")
@@ -58,6 +64,7 @@ def reverse_root(root_directory: Path) -> Path:
         if staging_directory.exists():
             shutil.rmtree(staging_directory, ignore_errors=True)
         raise
+    LOGGER.info("Reverse completed for %s", root_directory)
     return root_directory
 
 

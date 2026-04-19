@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import logging
+import os
 from pathlib import Path
 
 from leximask.application.executor import apply_plan, reverse_root
@@ -18,10 +20,18 @@ from leximask.infrastructure.sidecar import (
     write_json_file,
 )
 from leximask.infrastructure.plan_store import deserialise_plan, serialise_plan
+from leximask.logging_utils import configure_logging
+
+LOGGER = logging.getLogger("leximask.cli")
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="leximask")
+    parser.add_argument(
+        "--log-level",
+        default=os.environ.get("LEXIMASK_LOG_LEVEL", "WARNING"),
+        help="Logging level: DEBUG, INFO, WARNING, ERROR, or CRITICAL",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     plan_parser = subparsers.add_parser("plan", help="Build a dry-run plan")
@@ -42,6 +52,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
+        configure_logging(args.log_level)
         if args.command == "plan":
             return _run_plan(Path(args.input), Path(args.mapping))
         if args.command == "apply":
@@ -64,6 +75,10 @@ def _run_plan(input_path: Path, mapping_path: Path) -> int:
     write_json_file(plan_path(root_directory), plan_payload)
     report = render_plan_report(plan_payload)
     plan_report_path(root_directory).write_text(report, encoding="utf-8", newline="\n")
+    LOGGER.info(
+        "Plan artefacts written to %s",
+        root_directory / ".leximask",
+    )
     print(report, end="")
     return 0
 

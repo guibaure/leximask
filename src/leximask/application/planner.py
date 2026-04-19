@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,6 +19,8 @@ from leximask.infrastructure.filesystem import (
 )
 from leximask.infrastructure.digests import sha256_text
 
+LOGGER = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True, slots=True)
 class PlanResult:
@@ -28,6 +31,7 @@ class PlanResult:
 
 
 def build_plan(root_directory: Path, mapping_path: Path, rules: tuple[MappingRule, ...]) -> PlanResult:
+    LOGGER.info("Building plan for %s using mapping %s", root_directory, mapping_path)
     excluded_relative_paths = _build_excluded_relative_paths(root_directory, mapping_path)
     discovered_files = discover_supported_files(root_directory, excluded_relative_paths)
     discovered_directories = discover_supported_directories(root_directory)
@@ -40,6 +44,11 @@ def build_plan(root_directory: Path, mapping_path: Path, rules: tuple[MappingRul
         planned_directories,
         passthrough_files,
         passthrough_directories,
+    )
+    LOGGER.info(
+        "Plan built with %d files and %d directories",
+        len(planned_files),
+        len(planned_directories),
     )
     return PlanResult(
         root_directory=root_directory,
