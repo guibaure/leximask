@@ -24,11 +24,16 @@ class WorkflowIntegrationTests(unittest.TestCase):
             mapping_path = Path(temporary_directory) / "mapping.csv"
             mapping_path.write_text("source,replacement\nalpha,omega\ntoken,mask\n", encoding="utf-8")
 
-            self._run_cli("plan", "--input", str(root), "--mapping", str(mapping_path))
+            plan_result = self._run_cli("plan", "--input", str(root), "--mapping", str(mapping_path))
             plan_data = json.loads((root / ".leximask" / "plan.json").read_text(encoding="utf-8"))
+            plan_report = (root / ".leximask" / "plan.txt").read_text(encoding="utf-8")
             self.assertEqual(plan_data["format"], "leximask/plan/v1")
             self.assertTrue(plan_data["files"][0]["transformed_text"])
             self.assertTrue(plan_data["files"][0]["source_digest"])
+            self.assertEqual(plan_result.stdout, plan_report)
+            self.assertIn("LexiMask Plan Report", plan_report)
+            self.assertIn("Directory actions:", plan_report)
+            self.assertIn("File actions:", plan_report)
 
             self._run_cli("apply", "--input", str(root))
             self.assertTrue((root / "src" / "omega" / "omega.py").is_file())
@@ -161,6 +166,23 @@ class WorkflowIntegrationTests(unittest.TestCase):
             self.assertTrue((root / "alpha" / "empty").is_dir())
             self.assertTrue((root / "alpha" / "empty" / "nested").is_dir())
             self.assertFalse((root / "omega").exists())
+
+    def test_plan_report_lists_changed_and_unchanged_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "repo"
+            root.mkdir()
+            (root / "alpha.txt").write_text("alpha\n", encoding="utf-8")
+            (root / "notes.txt").write_text("leave me\n", encoding="utf-8")
+            mapping_path = Path(temporary_directory) / "mapping.csv"
+            mapping_path.write_text("source,replacement\nalpha,omega\n", encoding="utf-8")
+
+            self._run_cli("plan", "--input", str(root), "--mapping", str(mapping_path))
+
+            plan_report = (root / ".leximask" / "plan.txt").read_text(encoding="utf-8")
+            self.assertIn("Changed files: 1", plan_report)
+            self.assertIn("Unchanged files: 1", plan_report)
+            self.assertIn("- alpha.txt -> omega.txt [matches=1]", plan_report)
+            self.assertNotIn("- notes.txt -> notes.txt [matches=0]", plan_report)
 
     def test_apply_fails_when_source_changes_after_plan(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

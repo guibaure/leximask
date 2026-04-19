@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 from leximask.application.executor import apply_plan, reverse_root
 from leximask.application.planner import build_plan
+from leximask.application.reporting import render_plan_report
 from leximask.domain.mapping import load_mapping_rules
 from leximask.errors import LexiMaskError
 from leximask.infrastructure.filesystem import validate_root_directory
-from leximask.infrastructure.sidecar import plan_path, write_json_file, load_json_file
+from leximask.infrastructure.sidecar import (
+    load_json_file,
+    plan_path,
+    plan_report_path,
+    write_json_file,
+)
 from leximask.infrastructure.plan_store import deserialise_plan, serialise_plan
 
 
@@ -57,7 +62,9 @@ def _run_plan(input_path: Path, mapping_path: Path) -> int:
     plan = build_plan(root_directory, resolved_mapping_path, rules)
     plan_payload = serialise_plan(plan)
     write_json_file(plan_path(root_directory), plan_payload)
-    print(_render_plan_summary(plan_payload))
+    report = render_plan_report(plan_payload)
+    plan_report_path(root_directory).write_text(report, encoding="utf-8", newline="\n")
+    print(report, end="")
     return 0
 
 
@@ -75,18 +82,6 @@ def _run_reverse(input_path: Path) -> int:
     reverse_root(root_directory)
     print(f"Reversed LexiMask changes in {root_directory}")
     return 0
-
-def _render_plan_summary(plan_payload: dict[str, object]) -> str:
-    files = list(plan_payload["files"])
-    directories = list(plan_payload["directories"])
-    rendered = {
-        "format": plan_payload["format"],
-        "root_directory": plan_payload["root_directory"],
-        "mapping_path": plan_payload["mapping_path"],
-        "file_count": len(files),
-        "directory_count": len(directories),
-    }
-    return json.dumps(rendered, indent=2, sort_keys=True)
 
 
 if __name__ == "__main__":

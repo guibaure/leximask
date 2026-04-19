@@ -11,6 +11,7 @@ from leximask.errors import MetadataError
 
 STATE_DIRECTORY_NAME = ".leximask"
 PLAN_FILE_NAME = "plan.json"
+PLAN_REPORT_FILE_NAME = "plan.txt"
 STATE_FILE_NAME = "state.json"
 SIDECAR_DIRECTORY_NAME = "sidecars"
 
@@ -21,6 +22,10 @@ def state_directory(root_directory: Path) -> Path:
 
 def plan_path(root_directory: Path) -> Path:
     return state_directory(root_directory) / PLAN_FILE_NAME
+
+
+def plan_report_path(root_directory: Path) -> Path:
+    return state_directory(root_directory) / PLAN_REPORT_FILE_NAME
 
 
 def state_path(root_directory: Path) -> Path:
