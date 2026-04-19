@@ -178,8 +178,16 @@ Run the current validation set:
 make test
 ```
 
+Run the local CI-equivalent checks:
+
+```bash
+make ci
+```
+
 Inspect the CLI:
 
 ```bash
 make cli
 ```
+
+The repository also includes a GitHub Actions workflow at `.github/workflows/ci.yml` that runs the Python test suite on Python 3.12 and 3.13 and verifies that the Docker image builds successfully.
