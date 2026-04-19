@@ -11,6 +11,7 @@ from leximask.application.planner import PlanResult
 from leximask.errors import ConflictError, MetadataError, ValidationError
 from leximask.infrastructure.digests import sha256_text
 from leximask.infrastructure.filesystem import (
+    copy_passthrough_directories,
     copy_passthrough_entries,
     copy_preserved_entries,
     create_staging_directory,
@@ -63,6 +64,13 @@ def _materialise_transformed_tree(staging_root: Path, plan: PlanResult) -> None:
     staging_root.mkdir(parents=True, exist_ok=False)
     directory_mapping = _build_directory_mapping(plan.directories, forward=True)
     copy_preserved_entries(plan.root_directory, staging_root)
+    copy_passthrough_directories(
+        plan.root_directory,
+        staging_root,
+        transform_relative_path=lambda relative_path: _rewrite_relative_path(
+            relative_path, directory_mapping
+        ),
+    )
     copy_passthrough_entries(
         plan.root_directory,
         staging_root,
@@ -142,6 +150,13 @@ def _materialise_restored_tree(
     staging_root.mkdir(parents=True, exist_ok=False)
     directory_mapping = _build_directory_mapping_from_manifest(manifest, forward=False)
     copy_preserved_entries(transformed_root, staging_root)
+    copy_passthrough_directories(
+        transformed_root,
+        staging_root,
+        transform_relative_path=lambda relative_path: _rewrite_relative_path(
+            relative_path, directory_mapping
+        ),
+    )
     copy_passthrough_entries(
         transformed_root,
         staging_root,

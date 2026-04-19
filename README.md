@@ -162,6 +162,7 @@ docker run --rm \
 
 - Supported text inputs include source files, Markdown, JSON, YAML, CSV, TOML, INI, CFG, CONF, properties files, `Dockerfile`, `.gitignore`, `.dockerignore`, `.editorconfig`, `.env`, and related text-oriented configuration files.
 - Known binary, media, database, and hidden control artefacts such as `.codex`, `.sqlite3`, and `.mp3` are preserved unchanged and do not block planning.
+- Ignored directories such as nested `.codex` trees are preserved as passthrough artefacts during apply and reverse.
 - Preserved passthrough artefacts follow planned parent-directory renames and are restored on reverse.
 - Empty directories inside the supported repository tree are included in planning and are renamed and restored deterministically.
 - Unknown unsupported files still cause planning to fail so the transformation boundary remains explicit.

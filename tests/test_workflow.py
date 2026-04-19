@@ -132,6 +132,30 @@ class WorkflowIntegrationTests(unittest.TestCase):
             self.assertTrue((root / "alpha" / "runtime" / "sample.mp3").is_file())
             self.assertFalse((root / "omega").exists())
 
+    def test_passthrough_ignored_directories_follow_directory_renames_and_reverse_restores_them(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "repo"
+            root.mkdir()
+            (root / "alpha").mkdir()
+            (root / "alpha" / "alpha.txt").write_text("alpha token\n", encoding="utf-8")
+            (root / "alpha" / ".codex").mkdir()
+            (root / "alpha" / ".codex" / "state.json").write_text("control\n", encoding="utf-8")
+            mapping_path = Path(temporary_directory) / "mapping.csv"
+            mapping_path.write_text("source,replacement\nalpha,omega\ntoken,mask\n", encoding="utf-8")
+
+            self._run_cli("plan", "--input", str(root), "--mapping", str(mapping_path))
+            self._run_cli("apply", "--input", str(root))
+
+            self.assertTrue((root / "omega" / "omega.txt").is_file())
+            self.assertTrue((root / "omega" / ".codex" / "state.json").is_file())
+            self.assertFalse((root / "alpha").exists())
+
+            self._run_cli("reverse", "--input", str(root))
+
+            self.assertTrue((root / "alpha" / "alpha.txt").is_file())
+            self.assertTrue((root / "alpha" / ".codex" / "state.json").is_file())
+            self.assertFalse((root / "omega").exists())
+
     def test_empty_directories_are_renamed_and_restored(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory) / "repo"
