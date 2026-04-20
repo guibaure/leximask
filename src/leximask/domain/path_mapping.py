@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePath
+from typing import Mapping, TypeVar, cast
 
 from leximask.domain.models import PlannedDirectory
+
+PathT = TypeVar("PathT", bound=PurePath)
 
 
 def build_directory_mapping(
@@ -21,21 +24,24 @@ def build_directory_mapping(
 
 
 def rewrite_file_relative_path(
-    relative_path: Path, directory_mapping: dict[Path, Path]
-) -> Path:
+    relative_path: PathT, directory_mapping: Mapping[PathT, PathT]
+) -> PathT:
     rewritten_parent = rewrite_directory_path(relative_path.parent, directory_mapping)
-    return rewritten_parent / relative_path.name
+    return cast(PathT, rewritten_parent / relative_path.name)
 
 
-def rewrite_directory_path(path: Path, directory_mapping: dict[Path, Path]) -> Path:
-    if path in (Path(""), Path(".")):
-        return Path(".")
+def rewrite_directory_path(path: PathT, directory_mapping: Mapping[PathT, PathT]) -> PathT:
+    current_directory = cast(PathT, type(path)("."))
+    if path == current_directory:
+        return current_directory
     for candidate in (path, *path.parents):
-        if candidate in (Path(""), Path(".")):
+        if candidate == current_directory:
             continue
         rewritten_prefix = directory_mapping.get(candidate)
         if rewritten_prefix is None:
             continue
         suffix_parts = path.parts[len(candidate.parts) :]
-        return rewritten_prefix.joinpath(*suffix_parts) if suffix_parts else rewritten_prefix
+        if not suffix_parts:
+            return rewritten_prefix
+        return cast(PathT, rewritten_prefix.joinpath(*suffix_parts))
     return path
