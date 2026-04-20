@@ -33,6 +33,12 @@ jobs:
       - name: Install package
         run: python -m pip install --upgrade pip setuptools wheel && python -m pip install -e ".[dev]" --no-build-isolation
 
+      - name: Verify dependency metadata
+        run: python -m pip check
+
+      - name: Run bytecode compilation smoke
+        run: python -m compileall -q src tests
+
       - name: Run coverage gate
         if: runner.os != 'Windows'
         run: make coverage
@@ -45,6 +51,10 @@ jobs:
           python -m coverage run -m unittest discover -s tests -v
           python -m coverage combine
           python -m coverage report
+
+      - name: Run installed-package smoke
+        if: runner.os == 'Linux' && matrix.python-version == '3.12'
+        run: make package-smoke
 
   docker:
     runs-on: ubuntu-latest

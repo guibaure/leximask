@@ -26,6 +26,10 @@ The codebase follows explicit layers:
 
 This first version favours explicitness and reversibility over aggressive optimisation.
 
+## Quality Strategy
+
+Repository-specific testing, release, and production-readiness guidance is documented in [docs/quality-strategy.md](docs/quality-strategy.md).
+
 ## Mapping format
 
 Mappings are stored in a UTF-8 encoded two-column CSV file.
@@ -224,6 +228,13 @@ Run the 100% branch coverage gate:
 make coverage
 ```
 
+Run bytecode and installed-package smoke checks:
+
+```bash
+make compile
+make package-smoke
+```
+
 Run the local CI-equivalent checks:
 
 ```bash
@@ -236,4 +247,4 @@ Inspect the CLI:
 make cli
 ```
 
-The repository also includes a GitHub Actions workflow at `.github/workflows/ci.yml` that runs the 100% branch coverage gate on Python 3.12 and 3.13, then validates Docker help and bind-mounted plan/apply/reverse usage.
+The repository also includes a GitHub Actions workflow at `.github/workflows/ci.yml` that verifies dependency metadata, bytecode compilation, full branch coverage, installed-package smoke, and Docker bind-mounted plan/apply/reverse usage across the supported CI platforms.
