@@ -20,10 +20,10 @@ from leximask.infrastructure.filesystem import (
     replace_directory_atomically,
     write_text_file,
 )
+from leximask.infrastructure.ignore_rules import IGNORE_FILE_NAME, IgnoreRules, load_ignore_rules
 from leximask.infrastructure.sidecar import (
     sidecar_path,
     sidecar_root,
-    state_directory,
     state_path,
     write_json_file,
     load_json_file,
@@ -35,11 +35,11 @@ LOGGER = logging.getLogger(__name__)
 def apply_plan(plan: PlanResult) -> Path:
     root_directory = plan.root_directory
     LOGGER.info("Applying plan to %s", root_directory)
-    _validate_apply_inputs(root_directory, plan)
+    ignore_rules = _validate_apply_inputs(root_directory, plan)
     staging_directory = create_staging_directory(root_directory, "apply")
     staging_root = staging_directory / root_directory.name
     try:
-        _materialise_transformed_tree(staging_root, plan)
+        _materialise_transformed_tree(staging_root, plan, ignore_rules)
         replace_directory_atomically(root_directory, staging_root, "apply")
     except Exception:
         if staging_directory.exists():
@@ -54,11 +54,12 @@ def reverse_root(root_directory: Path) -> Path:
     manifest = load_json_file(state_path(root_directory))
     if manifest.get("format") != "leximask/state/v1":
         raise MetadataError("Unsupported state file format")
+    ignore_rules = _validate_reverse_inputs(root_directory, manifest)
 
     staging_directory = create_staging_directory(root_directory, "reverse")
     staging_root = staging_directory / root_directory.name
     try:
-        _materialise_restored_tree(root_directory, staging_root, manifest)
+        _materialise_restored_tree(root_directory, staging_root, manifest, ignore_rules)
         replace_directory_atomically(root_directory, staging_root, "reverse")
     except Exception:
         if staging_directory.exists():
@@ -68,13 +69,16 @@ def reverse_root(root_directory: Path) -> Path:
     return root_directory
 
 
-def _materialise_transformed_tree(staging_root: Path, plan: PlanResult) -> None:
+def _materialise_transformed_tree(
+    staging_root: Path, plan: PlanResult, ignore_rules: IgnoreRules
+) -> None:
     staging_root.mkdir(parents=True, exist_ok=False)
     directory_mapping = build_directory_mapping(plan.directories, forward=True)
     copy_preserved_entries(plan.root_directory, staging_root)
     copy_passthrough_directories(
         plan.root_directory,
         staging_root,
+        ignore_rules,
         transform_relative_path=lambda relative_path: rewrite_directory_path(
             relative_path, directory_mapping
         ),
@@ -82,6 +86,7 @@ def _materialise_transformed_tree(staging_root: Path, plan: PlanResult) -> None:
     copy_passthrough_entries(
         plan.root_directory,
         staging_root,
+        ignore_rules,
         transform_relative_path=lambda relative_path: rewrite_file_relative_path(
             relative_path, directory_mapping
         ),
@@ -130,6 +135,7 @@ def _materialise_transformed_tree(staging_root: Path, plan: PlanResult) -> None:
         {
             "format": "leximask/state/v1",
             "mapping_path": str(plan.mapping_path.resolve()),
+            "ignore_file_digest": plan.ignore_file_digest,
             "root_name": plan.root_directory.name,
             "plan_digest": _plan_digest(plan),
             "directories": [
@@ -153,7 +159,10 @@ def _materialise_transformed_tree(staging_root: Path, plan: PlanResult) -> None:
 
 
 def _materialise_restored_tree(
-    transformed_root: Path, staging_root: Path, manifest: dict[str, Any]
+    transformed_root: Path,
+    staging_root: Path,
+    manifest: dict[str, Any],
+    ignore_rules: IgnoreRules,
 ) -> None:
     staging_root.mkdir(parents=True, exist_ok=False)
     directory_mapping = _build_directory_mapping_from_manifest(manifest, forward=False)
@@ -161,6 +170,7 @@ def _materialise_restored_tree(
     copy_passthrough_directories(
         transformed_root,
         staging_root,
+        ignore_rules,
         transform_relative_path=lambda relative_path: rewrite_directory_path(
             relative_path, directory_mapping
         ),
@@ -168,6 +178,7 @@ def _materialise_restored_tree(
     copy_passthrough_entries(
         transformed_root,
         staging_root,
+        ignore_rules,
         transform_relative_path=lambda relative_path: rewrite_file_relative_path(
             relative_path, directory_mapping
         ),
@@ -235,10 +246,15 @@ def _restore_text(transformed_text: str, sidecar: dict[str, Any]) -> str:
     return "".join(fragments)
 
 
-def _validate_apply_inputs(root_directory: Path, plan: PlanResult) -> None:
+def _validate_apply_inputs(root_directory: Path, plan: PlanResult) -> IgnoreRules:
     if plan.root_directory.resolve() != root_directory.resolve():
         raise ValidationError(
             f"Saved plan targets {plan.root_directory}, not requested root {root_directory}"
+        )
+    ignore_rules = load_ignore_rules(root_directory)
+    if ignore_rules.digest != plan.ignore_file_digest:
+        raise ValidationError(
+            f"Ignore rules changed after planning: {IGNORE_FILE_NAME}"
         )
     for planned_file in plan.files:
         source_path = root_directory / planned_file.source_relative_path
@@ -251,6 +267,16 @@ def _validate_apply_inputs(root_directory: Path, plan: PlanResult) -> None:
                 "Source file changed after planning: "
                 f"{planned_file.source_relative_path}"
             )
+    return ignore_rules
+
+
+def _validate_reverse_inputs(
+    root_directory: Path, manifest: dict[str, Any]
+) -> IgnoreRules:
+    ignore_rules = load_ignore_rules(root_directory)
+    if ignore_rules.digest != manifest.get("ignore_file_digest"):
+        raise MetadataError(f"Ignore rules changed after apply: {IGNORE_FILE_NAME}")
+    return ignore_rules
 
 
 def _plan_digest(plan: PlanResult) -> str:
@@ -258,6 +284,7 @@ def _plan_digest(plan: PlanResult) -> str:
         [
             str(plan.root_directory.resolve()),
             str(plan.mapping_path.resolve()),
+            plan.ignore_file_digest or "",
             *(
                 f"{planned_file.source_relative_path}|{planned_file.target_relative_path}|"
                 f"{planned_file.source_digest}|{planned_file.transformed_digest}"

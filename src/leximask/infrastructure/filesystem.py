@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Callable
 
 from leximask.errors import ValidationError
+from leximask.infrastructure.ignore_rules import IGNORE_FILE_NAME, IgnoreRules
 
 SUPPORTED_SUFFIXES = {
     ".py",
@@ -85,23 +86,30 @@ def validate_root_directory(root_directory: Path) -> Path:
 
 
 def discover_supported_files(
-    root_directory: Path, excluded_relative_paths: tuple[Path, ...] = ()
+    root_directory: Path,
+    ignore_rules: IgnoreRules,
+    excluded_relative_paths: tuple[Path, ...] = (),
 ) -> tuple[DiscoveredFile, ...]:
     discovered: list[DiscoveredFile] = []
     unsupported: list[Path] = []
     excluded_paths = set(excluded_relative_paths)
 
     for current_root, directory_names, file_names in os.walk(root_directory):
-        directory_names[:] = sorted(
-            name for name in directory_names if name not in IGNORED_NAMES
-        )
         current_root_path = Path(current_root)
+        directory_names[:] = _filter_supported_directory_names(
+            root_directory,
+            current_root_path,
+            directory_names,
+            ignore_rules,
+        )
         for file_name in sorted(file_names):
             absolute_path = current_root_path / file_name
             relative_path = absolute_path.relative_to(root_directory)
             if relative_path in excluded_paths:
                 continue
             if file_name.startswith(".leximask."):
+                continue
+            if ignore_rules.matches_file(relative_path):
                 continue
             if _should_ignore_file(absolute_path):
                 continue
@@ -123,14 +131,19 @@ def discover_supported_files(
     return tuple(discovered)
 
 
-def discover_supported_directories(root_directory: Path) -> tuple[Path, ...]:
+def discover_supported_directories(
+    root_directory: Path, ignore_rules: IgnoreRules
+) -> tuple[Path, ...]:
     discovered: list[Path] = []
 
     for current_root, directory_names, _file_names in os.walk(root_directory):
-        directory_names[:] = sorted(
-            name for name in directory_names if name not in IGNORED_NAMES
-        )
         current_root_path = Path(current_root)
+        directory_names[:] = _filter_supported_directory_names(
+            root_directory,
+            current_root_path,
+            directory_names,
+            ignore_rules,
+        )
         if current_root_path == root_directory:
             continue
         discovered.append(current_root_path.relative_to(root_directory))
@@ -138,7 +151,9 @@ def discover_supported_directories(root_directory: Path) -> tuple[Path, ...]:
     return tuple(sorted(discovered, key=lambda path: (len(path.parts), path.parts)))
 
 
-def discover_passthrough_directories(root_directory: Path) -> tuple[Path, ...]:
+def discover_passthrough_directories(
+    root_directory: Path, ignore_rules: IgnoreRules
+) -> tuple[Path, ...]:
     discovered: list[Path] = []
 
     for current_root, directory_names, _file_names in os.walk(root_directory):
@@ -147,7 +162,11 @@ def discover_passthrough_directories(root_directory: Path) -> tuple[Path, ...]:
         for directory_name in sorted(directory_names):
             source_path = current_root_path / directory_name
             relative_path = source_path.relative_to(root_directory)
-            if directory_name in PRESERVED_DIRECTORY_NAMES or directory_name in IGNORED_NAMES:
+            if (
+                directory_name in PRESERVED_DIRECTORY_NAMES
+                or directory_name in IGNORED_NAMES
+                or ignore_rules.matches_directory(relative_path)
+            ):
                 discovered.append(relative_path)
                 continue
             kept_directory_names.append(directory_name)
@@ -157,7 +176,9 @@ def discover_passthrough_directories(root_directory: Path) -> tuple[Path, ...]:
 
 
 def discover_passthrough_files(
-    root_directory: Path, excluded_relative_paths: tuple[Path, ...] = ()
+    root_directory: Path,
+    ignore_rules: IgnoreRules,
+    excluded_relative_paths: tuple[Path, ...] = (),
 ) -> tuple[Path, ...]:
     discovered: list[Path] = []
     excluded_paths = set(excluded_relative_paths)
@@ -166,7 +187,12 @@ def discover_passthrough_files(
         current_root_path = Path(current_root)
         kept_directory_names: list[str] = []
         for directory_name in sorted(directory_names):
-            if directory_name in PRESERVED_DIRECTORY_NAMES or directory_name in IGNORED_NAMES:
+            relative_path = (current_root_path / directory_name).relative_to(root_directory)
+            if (
+                directory_name in PRESERVED_DIRECTORY_NAMES
+                or directory_name in IGNORED_NAMES
+                or ignore_rules.matches_directory(relative_path)
+            ):
                 continue
             kept_directory_names.append(directory_name)
         directory_names[:] = kept_directory_names
@@ -174,7 +200,11 @@ def discover_passthrough_files(
         for file_name in sorted(file_names):
             absolute_path = current_root_path / file_name
             relative_path = absolute_path.relative_to(root_directory)
-            if relative_path in excluded_paths or _should_ignore_file(absolute_path):
+            if (
+                relative_path in excluded_paths
+                or _should_ignore_file(absolute_path)
+                or ignore_rules.matches_file(relative_path)
+            ):
                 discovered.append(relative_path)
 
     return tuple(sorted(discovered, key=lambda path: path.parts))
@@ -185,7 +215,11 @@ def _is_supported_text_file(path: Path) -> bool:
 
 
 def _should_ignore_file(path: Path) -> bool:
-    return path.name in IGNORED_NAMES or path.suffix.lower() in IGNORED_BINARY_SUFFIXES
+    return (
+        path.name in IGNORED_NAMES
+        or path.name == IGNORE_FILE_NAME
+        or path.suffix.lower() in IGNORED_BINARY_SUFFIXES
+    )
 
 
 def copy_preserved_entries(source_root: Path, destination_root: Path) -> None:
@@ -202,18 +236,22 @@ def copy_preserved_entries(source_root: Path, destination_root: Path) -> None:
 def copy_passthrough_entries(
     source_root: Path,
     destination_root: Path,
+    ignore_rules: IgnoreRules,
     transform_relative_path: Callable[[Path], Path] | None = None,
 ) -> None:
     path_transform = transform_relative_path or (lambda relative_path: relative_path)
     for current_root, directory_names, file_names in os.walk(source_root):
-        directory_names[:] = sorted(
-            name for name in directory_names if name not in IGNORED_NAMES
-        )
         current_root_path = Path(current_root)
+        directory_names[:] = _filter_passthrough_file_directory_names(
+            source_root,
+            current_root_path,
+            directory_names,
+            ignore_rules,
+        )
         for file_name in sorted(file_names):
             absolute_path = current_root_path / file_name
             relative_path = absolute_path.relative_to(source_root)
-            if _should_copy_passthrough_file(relative_path, absolute_path):
+            if _should_copy_passthrough_file(relative_path, absolute_path, ignore_rules):
                 target_path = destination_root / path_transform(relative_path)
                 target_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(absolute_path, target_path)
@@ -222,6 +260,7 @@ def copy_passthrough_entries(
 def copy_passthrough_directories(
     source_root: Path,
     destination_root: Path,
+    ignore_rules: IgnoreRules,
     transform_relative_path: Callable[[Path], Path] | None = None,
 ) -> None:
     path_transform = transform_relative_path or (lambda relative_path: relative_path)
@@ -235,7 +274,7 @@ def copy_passthrough_directories(
             relative_path = source_path.relative_to(source_root)
             if directory_name in PRESERVED_DIRECTORY_NAMES:
                 continue
-            if directory_name in IGNORED_NAMES:
+            if directory_name in IGNORED_NAMES or ignore_rules.matches_directory(relative_path):
                 target_path = destination_root / path_transform(relative_path)
                 target_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copytree(source_path, target_path, symlinks=True)
@@ -244,12 +283,43 @@ def copy_passthrough_directories(
         directory_names[:] = kept_directory_names
 
 
-def _should_copy_passthrough_file(relative_path: Path, absolute_path: Path) -> bool:
+def _should_copy_passthrough_file(
+    relative_path: Path, absolute_path: Path, ignore_rules: IgnoreRules
+) -> bool:
     if any(part in IGNORED_NAMES - {".leximask"} for part in relative_path.parts):
         return True
     if any(part in PRESERVED_DIRECTORY_NAMES for part in relative_path.parts):
         return True
-    return _should_ignore_file(absolute_path)
+    return ignore_rules.matches_file(relative_path) or _should_ignore_file(absolute_path)
+
+
+def _filter_supported_directory_names(
+    root_directory: Path,
+    current_root_path: Path,
+    directory_names: list[str],
+    ignore_rules: IgnoreRules,
+) -> list[str]:
+    kept_directory_names: list[str] = []
+    for directory_name in sorted(directory_names):
+        relative_path = (current_root_path / directory_name).relative_to(root_directory)
+        if directory_name in IGNORED_NAMES or ignore_rules.matches_directory(relative_path):
+            continue
+        kept_directory_names.append(directory_name)
+    return kept_directory_names
+
+
+def _filter_passthrough_file_directory_names(
+    root_directory: Path,
+    current_root_path: Path,
+    directory_names: list[str],
+    ignore_rules: IgnoreRules,
+) -> list[str]:
+    return _filter_supported_directory_names(
+        root_directory,
+        current_root_path,
+        directory_names,
+        ignore_rules,
+    )
 
 
 def write_text_file(path: Path, content: str) -> None:

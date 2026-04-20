@@ -18,6 +18,7 @@ def serialise_plan(plan: PlanResult) -> dict[str, object]:
         "format": PLAN_FORMAT,
         "root_directory": str(plan.root_directory),
         "mapping_path": str(plan.mapping_path),
+        "ignore_file_digest": plan.ignore_file_digest,
         "files": [
             {
                 "source_relative_path": str(planned_file.source_relative_path),
@@ -83,6 +84,11 @@ def deserialise_plan(payload: dict[str, Any]) -> PlanResult:
     return PlanResult(
         root_directory=Path(str(payload["root_directory"])),
         mapping_path=Path(str(payload["mapping_path"])),
+        ignore_file_digest=(
+            str(payload["ignore_file_digest"])
+            if payload.get("ignore_file_digest") is not None
+            else None
+        ),
         files=files,
         directories=directories,
     )

@@ -18,6 +18,7 @@ from leximask.infrastructure.filesystem import (
     discover_supported_files,
 )
 from leximask.infrastructure.digests import sha256_text
+from leximask.infrastructure.ignore_rules import load_ignore_rules
 
 LOGGER = logging.getLogger(__name__)
 
@@ -26,17 +27,27 @@ LOGGER = logging.getLogger(__name__)
 class PlanResult:
     root_directory: Path
     mapping_path: Path
+    ignore_file_digest: str | None
     files: tuple[PlannedFile, ...]
     directories: tuple[PlannedDirectory, ...]
 
 
 def build_plan(root_directory: Path, mapping_path: Path, rules: tuple[MappingRule, ...]) -> PlanResult:
     LOGGER.info("Building plan for %s using mapping %s", root_directory, mapping_path)
+    ignore_rules = load_ignore_rules(root_directory)
     excluded_relative_paths = _build_excluded_relative_paths(root_directory, mapping_path)
-    discovered_files = discover_supported_files(root_directory, excluded_relative_paths)
-    discovered_directories = discover_supported_directories(root_directory)
-    passthrough_files = discover_passthrough_files(root_directory, excluded_relative_paths)
-    passthrough_directories = discover_passthrough_directories(root_directory)
+    discovered_files = discover_supported_files(
+        root_directory,
+        ignore_rules,
+        excluded_relative_paths,
+    )
+    discovered_directories = discover_supported_directories(root_directory, ignore_rules)
+    passthrough_files = discover_passthrough_files(
+        root_directory,
+        ignore_rules,
+        excluded_relative_paths,
+    )
+    passthrough_directories = discover_passthrough_directories(root_directory, ignore_rules)
     planned_files = tuple(_plan_files(discovered_files, rules))
     planned_directories = tuple(_plan_directories(discovered_files, discovered_directories, rules))
     _validate_path_collisions(
@@ -53,6 +64,7 @@ def build_plan(root_directory: Path, mapping_path: Path, rules: tuple[MappingRul
     return PlanResult(
         root_directory=root_directory,
         mapping_path=mapping_path,
+        ignore_file_digest=ignore_rules.digest,
         files=planned_files,
         directories=planned_directories,
     )
