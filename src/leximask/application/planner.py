@@ -174,18 +174,6 @@ def _validate_path_collisions(
                 f"{source_file_path} -> {target_file_path}"
             )
 
-    file_target_paths = set(file_targets)
-    for target_directory_path, source_directory_path in directory_targets.items():
-        if any(parent == target_directory_path for path in file_target_paths for parent in path.parents):
-            continue
-        if any(path.parent == target_directory_path for path in file_target_paths):
-            continue
-        if any(path == target_directory_path for path in file_target_paths):
-            raise ConflictError(
-                "Target path would be both a directory and a file: "
-                f"{source_directory_path} -> {target_directory_path}"
-            )
-
     passthrough_directory_mapping = build_directory_mapping(planned_directories, forward=True)
     passthrough_file_targets = _collect_passthrough_file_targets(
         passthrough_files,
