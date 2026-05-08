@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from unittest.mock import patch
 
 from tests import _path_setup  # noqa: F401
@@ -28,7 +28,11 @@ from leximask.infrastructure.filesystem import (
     validate_root_directory,
 )
 from leximask.infrastructure.ignore_rules import IgnoreRules, load_ignore_rules
-from leximask.infrastructure.plan_store import deserialise_plan
+from leximask.infrastructure.plan_store import deserialise_plan, serialise_plan
+from leximask.infrastructure.repository_paths import (
+    deserialise_repository_relative_path,
+    serialise_repository_relative_path,
+)
 from leximask.infrastructure.sidecar import load_json_file, sidecar_path, sidecar_root, state_path, write_json_file
 from leximask.logging_utils import configure_logging
 
@@ -396,6 +400,34 @@ class EdgeCaseTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValidationError, "Unsupported log level"):
                 configure_logging("not-a-level")
+
+    def test_repository_relative_metadata_paths_use_posix_separators(self) -> None:
+        self.assertEqual(
+            serialise_repository_relative_path(PureWindowsPath("alpha/empty/nested")),
+            "alpha/empty/nested",
+        )
+        self.assertEqual(
+            deserialise_repository_relative_path("alpha\\empty\\nested"),
+            Path("alpha/empty/nested"),
+        )
+        payload = serialise_plan(
+            PlanResult(
+                root_directory=Path("/repo"),
+                mapping_path=Path("/mapping.csv"),
+                ignore_file_digest=None,
+                files=(),
+                directories=(
+                    PlannedDirectory(
+                        PureWindowsPath("alpha/empty"),
+                        PureWindowsPath("omega/empty"),
+                    ),
+                ),
+            )
+        )
+        self.assertEqual(
+            payload["directories"][0]["source_relative_path"],
+            "alpha/empty",
+        )
 
     def test_planner_collision_branches_are_explicit(self) -> None:
         file_a = _planned_file(Path("a.txt"), Path("target.txt"))
