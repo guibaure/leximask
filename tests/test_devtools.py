@@ -11,6 +11,10 @@ from tests import _path_setup  # noqa: F401
 from leximask.devtools import runtime_project, test_runner
 
 
+def _resolved(path: Path) -> Path:
+    return path.resolve()
+
+
 class TestRunnerTests(unittest.TestCase):
     def test_iter_test_directories_defaults_and_appends_runtime_dir(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -23,8 +27,8 @@ class TestRunnerTests(unittest.TestCase):
             self.assertEqual(
                 directories,
                 (
-                    project_root / "tests",
-                    project_root / "runtime" / "tests",
+                    _resolved(project_root / "tests"),
+                    _resolved(project_root / "runtime" / "tests"),
                 ),
             )
 
@@ -35,7 +39,7 @@ class TestRunnerTests(unittest.TestCase):
 
             directories = test_runner.iter_test_directories(project_root, "tests")
 
-            self.assertEqual(directories, (project_root / "tests",))
+            self.assertEqual(directories, (_resolved(project_root / "tests"),))
 
     def test_iter_test_directories_rejects_missing_runtime_dir(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -90,12 +94,12 @@ class TestRunnerTests(unittest.TestCase):
             self.assertEqual(mocked_run.call_count, 2)
             first_call = mocked_run.call_args_list[0]
             second_call = mocked_run.call_args_list[1]
-            self.assertEqual(first_call.kwargs["cwd"], project_root)
-            self.assertEqual(second_call.kwargs["cwd"], project_root)
-            self.assertEqual(first_call.args[0][-2:], [str(project_root / "tests"), "-v"])
+            self.assertEqual(first_call.kwargs["cwd"], _resolved(project_root))
+            self.assertEqual(second_call.kwargs["cwd"], _resolved(project_root))
+            self.assertEqual(first_call.args[0][-2:], [str(_resolved(project_root / "tests")), "-v"])
             self.assertEqual(
                 second_call.args[0][-2:],
-                [str(project_root / "runtime" / "tests"), "-v"],
+                [str(_resolved(project_root / "runtime" / "tests")), "-v"],
             )
 
     def test_main_rejects_missing_project_root(self) -> None:
@@ -128,7 +132,7 @@ class RuntimeProjectTests(unittest.TestCase):
                     "existing",
                     "Example directory",
                 ),
-                existing_directory,
+                _resolved(existing_directory),
             )
             self.assertEqual(
                 runtime_project.resolve_existing_directory(
@@ -136,15 +140,15 @@ class RuntimeProjectTests(unittest.TestCase):
                     str(existing_directory),
                     "Example directory",
                 ),
-                existing_directory,
+                _resolved(existing_directory),
             )
             self.assertEqual(
                 runtime_project.resolve_path(base_directory, "runtime/tests"),
-                base_directory / "runtime" / "tests",
+                _resolved(base_directory / "runtime" / "tests"),
             )
             self.assertEqual(
                 runtime_project.resolve_path(base_directory, str(existing_directory)),
-                existing_directory,
+                _resolved(existing_directory),
             )
 
     def test_build_leximask_command_adds_source_directory_to_pythonpath(self) -> None:
@@ -164,7 +168,7 @@ class RuntimeProjectTests(unittest.TestCase):
             self.assertEqual(command[:3], [runtime_project.sys.executable, "-m", "leximask.cli"])
             self.assertEqual(
                 environment["PYTHONPATH"],
-                f"{project_root / 'src'}{runtime_project.os.pathsep}/existing",
+                f"{_resolved(project_root / 'src')}{runtime_project.os.pathsep}/existing",
             )
 
     def test_build_leximask_environment_sets_pythonpath_when_missing(self) -> None:
@@ -175,7 +179,7 @@ class RuntimeProjectTests(unittest.TestCase):
             with patch.dict("os.environ", {}, clear=True):
                 environment = runtime_project.build_leximask_environment(project_root)
 
-            self.assertEqual(environment["PYTHONPATH"], str(project_root / "src"))
+            self.assertEqual(environment["PYTHONPATH"], str(_resolved(project_root / "src")))
 
     def test_virtualenv_python_path_matches_current_platform(self) -> None:
         virtualenv_directory = Path("/tmp/example-venv")
