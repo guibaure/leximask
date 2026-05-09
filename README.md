@@ -1,250 +1,194 @@
-# leximask
+# LexiMask
 
-Deterministic rule-based tool to obfuscate sensitive terms across file names and contents. Recursively scans directories, applies safe and configurable mappings, and outputs rewritten structures with full traceability. Designed for reliability, auditability, and large-scale use in production environments.
+## Overview
 
-## Status
+LexiMask is a deterministic, rule-based obfuscation engine engineered to securely mutate sensitive terms across file names, directory structures, and file contents. Designed for reliability, auditability, and large-scale deployment in production environments, it provides strict guarantees around traceability and rollback capabilities.
 
-The repository now contains an initial production-oriented Python implementation with:
+LexiMask recursively scans repositories, applies safe, configurable mappings, and outputs rewritten structures while preserving exact structural and metadata fidelity.
 
-- a CLI entrypoint;
-- deterministic planning;
-- fail-fast mapping and path validation;
-- apply and reverse workflows;
-- transactional file and directory path rewrites for planned entries;
-- empty-directory rename and restoration support;
-- per-file sidecar metadata and a repository state manifest;
-- immutable saved plans with source and transformed digests.
+## Engineering Principles
+
+LexiMask adheres to stringent enterprise engineering standards:
+* **Determinism:** Execution yields identical outcomes for the same inputs.
+* **Fail-Fast Validation:** Mapping and path validation strictly reject ambiguous or conflicting configurations before any mutating operation begins.
+* **Auditability:** Immutable dry-run plans and applied state manifests are retained, ensuring comprehensive operational traceability.
+* **Reversibility:** Transformations are structurally reversible without relying on heuristics. Exact text fragments and offsets are preserved via sidecar metadata.
+* **Transactional Integrity:** File and directory rewrites are executed via atomic, transactional operations to prevent partial states.
 
 ## Architecture
 
-The codebase follows explicit layers:
+The system is decoupled into explicit layers to enforce separation of concerns:
 
-- interface layer: CLI parsing and human-readable reporting;
-- application layer: planning, apply, and reverse orchestration;
-- domain layer: mapping validation, deterministic matching, and case handling;
-- infrastructure layer: filesystem traversal, atomic directory replacement, and metadata persistence.
+* **Interface Layer:** CLI parsing, configuration ingestion, and human-readable operational reporting.
+* **Application Layer:** Orchestration of the core workflows: `plan`, `apply`, and `reverse`.
+* **Domain Layer:** Mapping validation, deterministic pattern matching, and casing preservation logic.
+* **Infrastructure Layer:** Filesystem traversal, atomic directory replacement, and immutable metadata persistence.
 
-This first version favours explicitness and reversibility over aggressive optimisation.
+This architecture prioritises explicitness and systemic reversibility over aggressive, opaque optimisations.
 
-## Quality Strategy
+## Governance and Quality Strategy
 
-Repository-specific testing, release, and production-readiness guidance is documented in [docs/quality-strategy.md](docs/quality-strategy.md).
+LexiMask enforces rigorous testing, release, and production-readiness criteria. Detailed repository-specific quality strategies, including CI/CD integration and release gating, are documented in `docs/quality-strategy.md`.
 
-## Mapping format
+## Operational Guidelines
 
-Mappings are stored in a UTF-8 encoded two-column CSV file.
+### Mapping Configuration
 
-Expected column order:
+Transformations are driven by mappings stored in a UTF-8 encoded, two-column CSV file.
 
-- column 1: source term;
-- column 2: replacement term.
+**Expected Column Order:**
+1. Source term
+2. Replacement term
 
-The first row may optionally be a header. If present, it must be:
-
+An optional header row is supported and must strictly match:
 ```csv
 source,replacement
 ```
 
-Example:
-
+**Example:**
 ```csv
 alpha,omega
 token,mask
 client,project
 ```
 
-Format rules:
+**Validation and Execution Rules:**
+* Each non-empty row must contain exactly two columns.
+* Leading and trailing whitespace is stripped.
+* Empty source or replacement values are strictly rejected.
+* Sources and replacements must be unique case-insensitively.
+* A replacement must not duplicate an existing source, nor contain another replacement as a substring.
+* Lexical matching is deterministic: longest match first, non-overlapping, evaluated left to right.
+* Matching is case-insensitive, but original casing is preserved and recorded in sidecar metadata for accurate reversibility.
+* Source terms may match substrings inside file names, directory names, and file contents.
+* A malformed or conflicting mapping file causes the `plan` phase to fail immediately, preventing any unsafe writes.
 
-- each non-empty row must contain exactly two columns;
-- leading and trailing whitespace around each cell is stripped during loading;
-- empty source values are rejected;
-- empty replacement values are rejected;
-- matching is case-insensitive, but original casing is preserved through sidecar metadata;
-- source terms may match substrings inside file names, directory names, and file contents.
+### Metadata and State Management
 
-Validation rules enforced before any write:
+LexiMask persists operational state and sidecar metadata within a `.leximask/` directory in the target repository. This ensures full traceability and safe reversal:
 
-- sources must be unique case-insensitively;
-- replacements must be unique case-insensitively;
-- a replacement must not also be a source;
-- a replacement must not contain another replacement.
+* `.leximask/plan.json`: The immutable, deterministic dry-run plan.
+* `.leximask/plan.txt`: A human-readable audit report of the plan.
+* `.leximask/state.json`: The applied repository state manifest.
+* `.leximask/sidecars/**/*.leximask.json`: Per-file sidecar metadata containing original path offsets and text fragments required for exact reversal.
 
-Operational implications:
+**Important Considerations:**
+* Sidecars store exact transformed offsets to guarantee heuristic-free reversion.
+* Metadata employs POSIX `/` separators universally across all operating systems.
+* The `apply` phase consumes the saved plan artefact (`plan.json`) strictly; it does not recompute from the mapping file.
+* The `reverse` phase verifies transformed file digests and sidecar consistency prior to initiating any restoration.
 
-- rule order in the CSV file does not define execution order;
-- matching is deterministic: longest match first, non-overlapping, left to right;
-- a malformed or conflicting mapping file causes `leximask plan` to fail before generating any writable output.
+### Passthrough Controls (`.leximaskignore`)
 
-## Metadata format
+The `.leximaskignore` file, placed at the repository root, defines strict passthrough rules for artefacts that must remain unmodified. This file is preserved unchanged across `apply` and `reverse` workflows.
 
-LexiMask writes metadata under `.leximask/` inside the transformed repository:
+**Format Rules:**
+* UTF-8 text file, one rule per line.
+* Blank lines and lines prefixed with `#` (comments) are ignored.
+* Rules must be repository-relative paths.
+* Directory rules must terminate with `/` or `\` to preserve the entire subtree.
+* Absolute paths, `..` traversal, and ambiguous root markers are rejected.
 
-- `.leximask/plan.json`: last computed dry-run plan;
-- `.leximask/plan.txt`: human-readable dry-run report;
-- `.leximask/state.json`: applied repository state manifest;
-- `.leximask/sidecars/**/*.leximask.json`: per-file sidecars with original path and exact replacement boundaries.
-- `.leximaskignore`: optional repository-local passthrough control file preserved unchanged across apply and reverse.
+**Operational Behaviour:**
+* Ignored files and directories are treated as passthrough artefacts; they are not scanned or mutated but are copied to the target output.
+* Passthrough paths follow planned parent-directory renames.
+* Ignored paths participate in collision detection; unsafe target overlaps will fail the plan phase.
+* Unsupported artefacts not explicitly ignored via `.leximaskignore` will fail the planning phase by design.
+* `apply` and `reverse` operations fail if the `.leximaskignore` file is modified after planning.
 
-Sidecars store the transformed offsets and original text fragments required for exact reverse without heuristics.
-Repository-relative paths stored in metadata use POSIX `/` separators on every operating system.
-`apply` consumes the saved plan artifact rather than recomputing from the mapping file. `reverse` verifies transformed file digests and sidecar consistency before restoring any content. If `.leximaskignore` exists, both `apply` and `reverse` also verify that it still matches the digest captured during planning.
+## Usage and Deployment
 
-## Usage
+LexiMask provides a comprehensive CLI for local execution and integration into automated pipelines.
 
-Run directly from the repository without installation:
+### Local CLI Execution
+
+Run the module directly from the source tree:
 
 ```bash
-PYTHONPATH=src python -m leximask.cli plan --mapping "<path to mapping CSV>" --input "<path to repository to obfuscate>"
-PYTHONPATH=src python -m leximask.cli apply --input "<path to repository to obfuscate>"
+# Generate a transformation plan
+PYTHONPATH=src python -m leximask.cli --log-level INFO plan --mapping <path to mapping CSV> --input <path to repository>
+
+# Apply the generated plan
+PYTHONPATH=src python -m leximask.cli --log-level INFO apply --input <path to repository>
+
+# Reverse a previously applied transformation
+PYTHONPATH=src python -m leximask.cli --log-level INFO reverse --input <path to repository>
 ```
 
-Equivalent generic example:
-
-```bash
-PYTHONPATH=src python -m leximask.cli --log-level INFO plan --mapping <path to mapping CSV> --input <path to repository to obfuscate>
-PYTHONPATH=src python -m leximask.cli --log-level INFO apply --input <path to repository to obfuscate>
-PYTHONPATH=src python -m leximask.cli --log-level INFO reverse --input <path to repository to obfuscate>
-```
-
-If the mapping CSV is stored inside the input repository, LexiMask excludes that specific file from the transformation plan and preserves it unchanged.
-
-If the `plan` command succeeds, it writes both `.leximask/plan.json` and `.leximask/plan.txt` inside the target repository. `apply` consumes the saved JSON plan. If `plan` fails, `apply` will fail because no plan file was produced.
-
-Use `--log-level DEBUG|INFO|WARNING|ERROR|CRITICAL` or the `LEXIMASK_LOG_LEVEL` environment variable to control operational logging.
-
-### `.leximaskignore`
-
-Use `.leximaskignore` at the repository root to preserve additional unsupported artefacts unchanged instead of failing planning.
-
-Format rules:
-
-- UTF-8 text file, one rule per line;
-- blank lines are ignored;
-- lines starting with `#` are treated as comments;
-- rules are repository-relative paths;
-- file rules are exact relative file paths;
-- directory rules must end with `/` or `\` and preserve the whole subtree;
-- `/` and `\` are both accepted in the file, but rules are resolved relative to the repository root;
-- absolute paths, `..`, and ambiguous root markers are rejected.
-
-Example:
-
-```text
-# Preserve runtime artefacts that must stay outside lexical rewriting
-runtime/jobs.sqlite3
-runtime/archive/
-service/.cache/
-```
-
-Operational behaviour:
-
-- ignored files and directories are treated as passthrough artefacts during planning, apply, and reverse;
-- passthrough paths still follow planned parent-directory renames;
-- ignored paths still participate in collision detection, so unsafe target overlaps fail before any write;
-- unsupported files not covered by built-in passthrough handling or `.leximaskignore` still fail planning by design.
-
-Plan a transformation with the installed CLI:
+Alternatively, if installed as a package:
 
 ```bash
 leximask plan --input ./repo --mapping ./mapping.csv
-```
-
-Apply the last stored plan:
-
-```bash
 leximask apply --input ./repo
-```
-
-Reverse a previous apply:
-
-```bash
 leximask reverse --input ./repo
 ```
 
-### Docker usage
+**Logging:**
+Operational verbosity can be controlled via the `--log-level` flag or the `LEXIMASK_LOG_LEVEL` environment variable (supported levels: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`).
 
-Build the image:
+### Docker Integration
 
+For isolated or CI-driven environments, LexiMask provides a containerised distribution.
+
+**Image Build:**
 ```bash
 docker build -t leximask:local .
 ```
 
-LexiMask stages atomic apply and reverse operations in a temporary sibling directory beside the input repository. When running as a non-root Docker user, mount a writable parent directory rather than only the repository leaf.
-
-Run LexiMask against a repository from the host with bind mounts:
+**Execution via Docker Bind Mounts:**
+LexiMask stages atomic `apply` and `reverse` operations in a temporary sibling directory relative to the input repository. When executing as a non-root user, ensure a writable parent directory is mounted.
 
 ```bash
+# Plan
 docker run --rm \
   --user "$(id -u):$(id -g)" \
   -v "<parent directory containing repository>:/work" \
   -v "<path to mapping CSV>:/mapping.csv:ro" \
   leximask:local plan --input "/work/<repository directory name>" --mapping /mapping.csv
-```
 
-Apply the saved plan from the same mounted repository:
-
-```bash
+# Apply
 docker run --rm \
   --user "$(id -u):$(id -g)" \
   -v "<parent directory containing repository>:/work" \
   leximask:local apply --input "/work/<repository directory name>"
-```
 
-Reverse a previous apply from Docker:
-
-```bash
+# Reverse
 docker run --rm \
   --user "$(id -u):$(id -g)" \
   -v "<parent directory containing repository>:/work" \
   leximask:local reverse --input "/work/<repository directory name>"
 ```
 
-## Notes
+## System Support and Limitations
 
-- Supported text inputs include source files, Markdown, JSON, YAML, CSV, TOML, INI, CFG, CONF, properties files, `Dockerfile`, `.gitignore`, `.dockerignore`, `.editorconfig`, `.env`, and related text-oriented configuration files.
-- Known binary, media, database, and hidden control artefacts such as `.codex`, `.sqlite3`, and `.mp3` are preserved unchanged and do not block planning.
-- Unknown unsupported artefacts can be preserved explicitly through `.leximaskignore`; unlisted unsupported files still fail planning.
-- Ignored directories such as nested `.codex` trees are preserved as passthrough artefacts during apply and reverse.
-- Preserved passthrough artefacts follow planned parent-directory renames and are restored on reverse.
-- Empty directories inside the supported repository tree are included in planning and are renamed and restored deterministically.
-- Planning fails if a target path would collide with a preserved, ignored, or excluded passthrough path.
-- The Windows path-rewrite helpers are covered by dedicated unit tests and the CI matrix runs on both Linux and Windows.
-- Internal directories such as `.git` and `.leximask` are preserved and ignored by scanning.
-- `apply` fails if any planned source file changed after `plan`.
-- `apply` and `reverse` fail if `.leximaskignore` changes after planning.
-- `reverse` fails if transformed files or sidecars drift from the recorded metadata.
+* **Supported Formats:** Text-oriented inputs are explicitly supported, including source code, Markdown, JSON, YAML, CSV, TOML, INI, CFG, CONF, properties files, `Dockerfile`, `.gitignore`, `.dockerignore`, `.editorconfig`, and `.env`.
+* **Passthrough Artefacts:** Known binary, media, database, and specific control directories (e.g., `.codex`, `.sqlite3`, `.mp3`) are preserved unchanged automatically.
+* **Empty Directories:** Empty directories within the supported repository tree are included in the planning phase and undergo deterministic rename and restoration.
+* **Internal State:** Critical internal directories, notably `.git` and `.leximask`, are structurally preserved and excluded from mutation scanning.
+* **Mapping Artefact Exception:** If the mapping CSV is stored inside the input repository, LexiMask excludes that specific file from the transformation plan and preserves it unchanged.
+* **Integrity Enforcement:** The `apply` operation will safely abort if any planned source file is modified externally subsequent to the `plan` phase. Similarly, `reverse` operations fail if the transformed files or sidecar metadata drift from the recorded digest state.
+* **Cross-Platform Compatibility:** Windows path-rewrite helpers are rigorously tested, and the CI matrix validates core operational parity across Linux and Windows environments.
 
-## Developer workflow
+## Developer Workflow
 
-Run the current validation set:
+Local validation and quality gating commands:
 
 ```bash
+# Execute unit and integration tests
 make test
-```
 
-Run the 100% branch coverage gate:
-
-```bash
+# Enforce 100% branch coverage gating
 make coverage
-```
 
-Run bytecode and installed-package smoke checks:
-
-```bash
+# Execute bytecode compilation and installed-package smoke tests
 make compile
 make package-smoke
-```
 
-Run the local CI-equivalent checks:
-
-```bash
+# Execute local CI parity checks
 make ci
-```
 
-Inspect the CLI:
-
-```bash
+# Validate CLI interface
 make cli
 ```
 
-The repository also includes a GitHub Actions workflow at `.github/workflows/ci.yml` that verifies dependency metadata, bytecode compilation, full branch coverage, installed-package smoke, and Docker bind-mounted plan/apply/reverse usage across the supported CI platforms.
+Comprehensive continuous integration is enforced via GitHub Actions (`.github/workflows/ci.yml`), verifying dependency integrity, bytecode compilation, exhaustive branch coverage, installed-package execution, and cross-platform Docker runtime compliance.
