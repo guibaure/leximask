@@ -177,19 +177,12 @@ Local validation and quality gating commands:
 # Execute unit and integration tests
 make test
 
-# Execute the tracked suite plus an additional runtime test directory
-make test RUNTIME_TEST_DIR=runtime/tests
-
 # Enforce 100% branch coverage gating
 make coverage
 
 # Execute bytecode compilation and installed-package smoke tests
 make compile
 make package-smoke
-
-# Clone the real-world runtime project and execute the disposable smoke validation
-make runtime-project-prepare
-make runtime-project-smoke
 
 # Execute local CI parity checks
 make ci
@@ -199,48 +192,3 @@ make cli
 ```
 
 Comprehensive continuous integration is enforced via GitHub Actions (`.github/workflows/ci.yml`), verifying dependency integrity, bytecode compilation, exhaustive branch coverage, installed-package execution, and cross-platform Docker runtime compliance.
-
-## Runtime Validation
-
-LexiMask now supports an optional runtime test root under `runtime/tests`. The entire `runtime/` tree is Git-ignored so it can hold disposable external repositories, virtual environments, and generated validation artefacts without polluting the tracked repository state.
-
-### Optional Runtime Test Directory
-
-The tracked suite still runs exactly as before by default. When you need to append an additional runtime suite, pass its path explicitly:
-
-```bash
-PYTHONPATH=src python -m leximask.devtools.test_runner
-PYTHONPATH=src python -m leximask.devtools.test_runner --runtime-test-dir runtime/tests
-```
-
-`--runtime-test-dir` is additive: LexiMask first runs the tracked `tests/` suite, then executes the specified runtime directory in the same repository root. This keeps the default workflow stable while allowing opt-in runtime exercises.
-
-### Real-World Runtime Project
-
-The selected external validation repository is [`pallets/click`](https://github.com/pallets/click). It is large enough to exercise package layout, metadata, tests, documentation, and path rewriting, but still straightforward to install and execute locally.
-
-LexiMask uses a curated ignore profile for this runtime exercise because Click contains unsupported `.rst` documentation and lock-file artefacts that should remain outside the masking surface:
-
-* `.git/`
-* `.devcontainer/`
-* `docs/`
-* `examples/`
-* `CHANGES.rst`
-* `src/click/py.typed`
-* `uv.lock`
-
-The runtime helper clones the repository under `runtime/tests/checkouts/pallets-click`, creates a disposable workspace under `runtime/tests/workspaces/pallets-click`, applies the mapping `click -> nimbus`, runs Click's upstream test suite after `apply`, reverses the transformation, then runs the upstream test suite again on the restored workspace.
-
-Commands:
-
-```bash
-PYTHONPATH=src python -m leximask.devtools.runtime_project prepare-click
-PYTHONPATH=src python -m leximask.devtools.runtime_project validate-click
-```
-
-Both commands accept `--runtime-test-root` if you want a different Git-ignored runtime location:
-
-```bash
-PYTHONPATH=src python -m leximask.devtools.runtime_project prepare-click --runtime-test-root runtime/tests
-PYTHONPATH=src python -m leximask.devtools.runtime_project validate-click --runtime-test-root runtime/tests
-```
