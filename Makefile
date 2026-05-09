@@ -1,15 +1,16 @@
 PYTHON ?= python
 COVERAGE ?= $(if $(wildcard .venv/bin/coverage),.venv/bin/coverage,$(PYTHON) -m coverage)
 SETUPTOOLS_PYTHON ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,$(PYTHON))
+RUNTIME_TEST_DIR ?=
 
-.PHONY: test coverage compile package-smoke cli docker-build docker-smoke ci
+.PHONY: test coverage compile package-smoke runtime-project-prepare runtime-project-smoke cli docker-build docker-smoke ci
 
 test:
-	PYTHONPATH=src $(PYTHON) -m unittest discover -s tests -v
+	PYTHONPATH=src $(PYTHON) -m leximask.devtools.test_runner $(if $(RUNTIME_TEST_DIR),--runtime-test-dir $(RUNTIME_TEST_DIR))
 
 coverage:
 	COVERAGE_FILE=/tmp/leximask.coverage PYTHONPATH=src $(COVERAGE) erase
-	COVERAGE_FILE=/tmp/leximask.coverage PYTHONPATH=src $(COVERAGE) run -m unittest discover -s tests -v
+	COVERAGE_FILE=/tmp/leximask.coverage PYTHONPATH=src $(COVERAGE) run -m leximask.devtools.test_runner $(if $(RUNTIME_TEST_DIR),--runtime-test-dir $(RUNTIME_TEST_DIR))
 	COVERAGE_FILE=/tmp/leximask.coverage PYTHONPATH=src $(COVERAGE) combine
 	COVERAGE_FILE=/tmp/leximask.coverage PYTHONPATH=src $(COVERAGE) report
 
@@ -36,6 +37,12 @@ package-smoke:
 	"$$tmp_dir/run-venv/bin/leximask" reverse --input "$$tmp_dir/repo" >/dev/null; \
 	test -f "$$tmp_dir/repo/alpha/alpha.txt"; \
 	grep -q 'alpha token' "$$tmp_dir/repo/alpha/alpha.txt"
+
+runtime-project-prepare:
+	PYTHONPATH=src $(PYTHON) -m leximask.devtools.runtime_project prepare-click
+
+runtime-project-smoke:
+	PYTHONPATH=src $(PYTHON) -m leximask.devtools.runtime_project validate-click
 
 cli:
 	PYTHONPATH=src $(PYTHON) -m leximask.cli --help
