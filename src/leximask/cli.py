@@ -62,8 +62,8 @@ def main(argv: list[str] | None = None) -> int:
     except LexiMaskError as error:
         parser.exit(status=1, message=f"error: {error}\n")
 
-    parser.exit(status=2, message="error: unsupported command\n")
-    return 2
+    parser.exit(status=2, message="error: unsupported command\n")  # pragma: no cover
+    return 2  # pragma: no cover
 
 
 def _run_plan(input_path: Path, mapping_path: Path) -> int:

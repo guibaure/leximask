@@ -82,6 +82,7 @@ LexiMask writes metadata under `.leximask/` inside the transformed repository:
 - `.leximaskignore`: optional repository-local passthrough control file preserved unchanged across apply and reverse.
 
 Sidecars store the transformed offsets and original text fragments required for exact reverse without heuristics.
+Repository-relative paths stored in metadata use POSIX `/` separators on every operating system.
 `apply` consumes the saved plan artifact rather than recomputing from the mapping file. `reverse` verifies transformed file digests and sidecar consistency before restoring any content. If `.leximaskignore` exists, both `apply` and `reverse` also verify that it still matches the digest captured during planning.
 
 ## Usage
@@ -164,14 +165,16 @@ Build the image:
 docker build -t leximask:local .
 ```
 
+LexiMask stages atomic apply and reverse operations in a temporary sibling directory beside the input repository. When running as a non-root Docker user, mount a writable parent directory rather than only the repository leaf.
+
 Run LexiMask against a repository from the host with bind mounts:
 
 ```bash
 docker run --rm \
   --user "$(id -u):$(id -g)" \
-  -v "<path to repository to obfuscate>:/work/repo" \
-  -v "<path to mapping CSV>:/work/mapping.csv:ro" \
-  leximask:local plan --input /work/repo --mapping /work/mapping.csv
+  -v "<parent directory containing repository>:/work" \
+  -v "<path to mapping CSV>:/mapping.csv:ro" \
+  leximask:local plan --input "/work/<repository directory name>" --mapping /mapping.csv
 ```
 
 Apply the saved plan from the same mounted repository:
@@ -179,8 +182,8 @@ Apply the saved plan from the same mounted repository:
 ```bash
 docker run --rm \
   --user "$(id -u):$(id -g)" \
-  -v "<path to repository to obfuscate>:/work/repo" \
-  leximask:local apply --input /work/repo
+  -v "<parent directory containing repository>:/work" \
+  leximask:local apply --input "/work/<repository directory name>"
 ```
 
 Reverse a previous apply from Docker:
@@ -188,8 +191,8 @@ Reverse a previous apply from Docker:
 ```bash
 docker run --rm \
   --user "$(id -u):$(id -g)" \
-  -v "<path to repository to obfuscate>:/work/repo" \
-  leximask:local reverse --input /work/repo
+  -v "<parent directory containing repository>:/work" \
+  leximask:local reverse --input "/work/<repository directory name>"
 ```
 
 ## Notes
@@ -215,6 +218,12 @@ Run the current validation set:
 make test
 ```
 
+Run the 100% branch coverage gate:
+
+```bash
+make coverage
+```
+
 Run the local CI-equivalent checks:
 
 ```bash
@@ -227,4 +236,4 @@ Inspect the CLI:
 make cli
 ```
 
-The repository also includes a GitHub Actions workflow at `.github/workflows/ci.yml` that runs the Python test suite on Python 3.12 and 3.13 and verifies that the Docker image builds successfully.
+The repository also includes a GitHub Actions workflow at `.github/workflows/ci.yml` that runs the 100% branch coverage gate on Python 3.12 and 3.13, then validates Docker help and bind-mounted plan/apply/reverse usage.

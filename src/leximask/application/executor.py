@@ -21,6 +21,10 @@ from leximask.infrastructure.filesystem import (
     write_text_file,
 )
 from leximask.infrastructure.ignore_rules import IGNORE_FILE_NAME, IgnoreRules, load_ignore_rules
+from leximask.infrastructure.repository_paths import (
+    deserialise_repository_relative_path,
+    serialise_repository_relative_path,
+)
 from leximask.infrastructure.sidecar import (
     sidecar_path,
     sidecar_root,
@@ -113,8 +117,12 @@ def _materialise_transformed_tree(
             sidecar_path(sidecar_directory, planned_file.target_relative_path),
             {
                 "format": "leximask/sidecar/v1",
-                "original_relative_path": str(planned_file.source_relative_path),
-                "transformed_relative_path": str(planned_file.target_relative_path),
+                "original_relative_path": serialise_repository_relative_path(
+                    planned_file.source_relative_path
+                ),
+                "transformed_relative_path": serialise_repository_relative_path(
+                    planned_file.target_relative_path
+                ),
                 "source_digest": planned_file.source_digest,
                 "transformed_digest": planned_file.transformed_digest,
                 "matches": [
@@ -140,15 +148,23 @@ def _materialise_transformed_tree(
             "plan_digest": _plan_digest(plan),
             "directories": [
                 {
-                    "original_relative_path": str(directory.source_relative_path),
-                    "transformed_relative_path": str(directory.target_relative_path),
+                    "original_relative_path": serialise_repository_relative_path(
+                        directory.source_relative_path
+                    ),
+                    "transformed_relative_path": serialise_repository_relative_path(
+                        directory.target_relative_path
+                    ),
                 }
                 for directory in plan.directories
             ],
             "files": [
                 {
-                    "original_relative_path": str(planned_file.source_relative_path),
-                    "transformed_relative_path": str(planned_file.target_relative_path),
+                    "original_relative_path": serialise_repository_relative_path(
+                        planned_file.source_relative_path
+                    ),
+                    "transformed_relative_path": serialise_repository_relative_path(
+                        planned_file.target_relative_path
+                    ),
                     "source_digest": planned_file.source_digest,
                     "transformed_digest": planned_file.transformed_digest,
                 }
@@ -192,15 +208,19 @@ def _materialise_restored_tree(
     _create_planned_directories(
         staging_root,
         tuple(
-            Path(entry["original_relative_path"])
+            deserialise_repository_relative_path(entry["original_relative_path"])
             for entry in manifest.get("directories", [])
         ),
     )
 
     sidecars_base = sidecar_root(transformed_root)
     for file_entry in manifest.get("files", []):
-        transformed_relative_path = Path(file_entry["transformed_relative_path"])
-        original_relative_path = Path(file_entry["original_relative_path"])
+        transformed_relative_path = deserialise_repository_relative_path(
+            file_entry["transformed_relative_path"]
+        )
+        original_relative_path = deserialise_repository_relative_path(
+            file_entry["original_relative_path"]
+        )
         transformed_file_path = transformed_root / transformed_relative_path
         if not transformed_file_path.is_file():
             raise MetadataError(f"Transformed file is missing: {transformed_relative_path}")
@@ -286,12 +306,14 @@ def _plan_digest(plan: PlanResult) -> str:
             str(plan.mapping_path.resolve()),
             plan.ignore_file_digest or "",
             *(
-                f"{planned_file.source_relative_path}|{planned_file.target_relative_path}|"
+                f"{serialise_repository_relative_path(planned_file.source_relative_path)}|"
+                f"{serialise_repository_relative_path(planned_file.target_relative_path)}|"
                 f"{planned_file.source_digest}|{planned_file.transformed_digest}"
                 for planned_file in plan.files
             ),
             *(
-                f"{directory.source_relative_path}|{directory.target_relative_path}"
+                f"{serialise_repository_relative_path(directory.source_relative_path)}|"
+                f"{serialise_repository_relative_path(directory.target_relative_path)}"
                 for directory in plan.directories
             ),
         ]
@@ -327,8 +349,12 @@ def _build_directory_mapping_from_manifest(
 ) -> dict[Path, Path]:
     mapping: dict[Path, Path] = {}
     for entry in manifest.get("directories", []):
-        source_path = Path(entry["original_relative_path"])
-        target_path = Path(entry["transformed_relative_path"])
+        source_path = deserialise_repository_relative_path(
+            entry["original_relative_path"]
+        )
+        target_path = deserialise_repository_relative_path(
+            entry["transformed_relative_path"]
+        )
         mapping[source_path if forward else target_path] = (
             target_path if forward else source_path
         )
