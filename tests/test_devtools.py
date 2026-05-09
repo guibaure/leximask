@@ -49,6 +49,34 @@ class TestRunnerTests(unittest.TestCase):
             with self.assertRaisesRegex(FileNotFoundError, "Runtime test directory"):
                 test_runner.iter_test_directories(project_root, "runtime/tests")
 
+    def test_iter_test_directories_rejects_missing_default_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            project_root = Path(temporary_directory)
+            (project_root / "runtime" / "tests").mkdir(parents=True)
+
+            with self.assertRaisesRegex(FileNotFoundError, "Default test directory"):
+                test_runner.iter_test_directories(project_root, "runtime/tests")
+
+    def test_iter_test_directories_accepts_absolute_runtime_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            project_root = Path(temporary_directory)
+            runtime_test_directory = project_root / "runtime" / "tests"
+            (project_root / "tests").mkdir()
+            runtime_test_directory.mkdir(parents=True)
+
+            directories = test_runner.iter_test_directories(
+                project_root,
+                str(runtime_test_directory),
+            )
+
+            self.assertEqual(
+                directories,
+                (
+                    _resolved(project_root / "tests"),
+                    _resolved(runtime_test_directory),
+                ),
+            )
+
     def test_run_test_suites_stops_on_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             project_root = Path(temporary_directory)
@@ -150,6 +178,17 @@ class RuntimeProjectTests(unittest.TestCase):
                 runtime_project.resolve_path(base_directory, str(existing_directory)),
                 _resolved(existing_directory),
             )
+
+    def test_resolve_existing_directory_rejects_missing_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            base_directory = Path(temporary_directory)
+
+            with self.assertRaisesRegex(FileNotFoundError, "Example directory"):
+                runtime_project.resolve_existing_directory(
+                    base_directory,
+                    "missing",
+                    "Example directory",
+                )
 
     def test_build_leximask_command_adds_source_directory_to_pythonpath(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
